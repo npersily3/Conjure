@@ -52,7 +52,8 @@ neoForge {
 dependencies {
     // Gson and the Java 21 HttpClient (java.net.http) are already on the
     // Minecraft/NeoForge classpath, so the AI provider layer needs no extra deps yet.
-    // Later: Rhino for the scripting runtime, GeckoLib for data-driven mob models.
+    // Later: GeckoLib for data-driven mob models.
+    implementation 'org.mozilla:rhino:1.7.15' // TODO: jarJar for production runtime classpath
 }
 
 // Expand mod metadata placeholders into neoforge.mods.toml at build time

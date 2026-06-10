@@ -1,8 +1,12 @@
 package dev.conjure.content.item;
 
+import com.mojang.logging.LogUtils;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
+import dev.conjure.script.ScriptContext;
+import dev.conjure.script.ScriptException;
+import dev.conjure.script.ScriptRuntime;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResultHolder;
@@ -10,6 +14,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import org.slf4j.Logger;
 
 /**
  * A pre-registered item shell whose identity (name, behavior) is resolved at runtime from
@@ -17,6 +22,8 @@ import net.minecraft.world.level.Level;
  * never creates new items, it only fills in the {@link SlotDefinition} behind one of these.
  */
 public class ConjureItem extends Item {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private final int slotIndex;
 
@@ -38,11 +45,35 @@ public class ConjureItem extends Item {
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         SlotDefinition d = def();
+
         if (!d.configured) {
             return super.use(level, player, hand);
         }
-        // TODO(scripting): dispatch d.behaviorScriptId to the embedded Rhino runtime here.
-        // For now this is the integration point where right-click behavior will be evaluated.
-        return InteractionResultHolder.pass(player.getItemInHand(hand));
+
+        // Only run the script server-side; the client side is a no-op pass.
+        if (level.isClientSide) {
+            return InteractionResultHolder.pass(player.getItemInHand(hand));
+        }
+
+        String scriptId = d.behaviorScriptId;
+        if (scriptId == null || scriptId.isBlank()) {
+            // Configured slot but no script assigned yet — nothing to do.
+            return InteractionResultHolder.pass(player.getItemInHand(hand));
+        }
+
+        ScriptContext ctx = new ScriptContext(level, player, hand);
+        try {
+            ScriptRuntime.get().run(scriptId, ctx);
+        } catch (ScriptException e) {
+            LOGGER.error("[Conjure] Script error for item slot {} (scriptId='{}'): {}",
+                    slotIndex, scriptId, e.getMessage(), e);
+            player.displayClientMessage(
+                    Component.literal("[Conjure] Script error: " + e.getMessage()),
+                    false
+            );
+            return InteractionResultHolder.fail(player.getItemInHand(hand));
+        }
+
+        return InteractionResultHolder.sidedSuccess(player.getItemInHand(hand), level.isClientSide);
     }
 }

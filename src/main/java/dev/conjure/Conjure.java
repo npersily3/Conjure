@@ -6,6 +6,7 @@ import dev.conjure.registry.ConjureBlocks;
 import dev.conjure.registry.ConjureEntities;
 import dev.conjure.registry.ConjureFluids;
 import dev.conjure.registry.ConjureItems;
+import dev.conjure.registry.ConjureStructures;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -27,16 +28,22 @@ public final class Conjure {
     public Conjure(IEventBus modBus, ModContainer container) {
         ConjureItems.ITEMS.register(modBus);   // 500 item shells + every block's BlockItem
         ConjureBlocks.BLOCKS.register(modBus); // 500 block shells across archetype buckets
-        ConjureFluids.register(modBus);        // scaffold
-        ConjureEntities.register(modBus);      // scaffold
+        ConjureFluids.register(modBus);        // 32 fluid sets (source+flowing+block+bucket)
+        ConjureEntities.register(modBus);      // 128 mob slots across 3 size buckets
+        ConjureStructures.register(modBus);    // 1 StructureType for 100 datapack structure slots
 
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
 
-        LOGGER.info("Conjure online — pools: {} items, {} blocks ({} archetypes), {} fluids, {} entities",
+        LOGGER.info(
+                "Conjure online — pools: {} items, {} blocks ({} archetypes), {} fluids, {} entities ({}S/{}M/{}L), {} structure slots",
                 ConjureItems.ITEM_POOL,
                 BlockArchetype.totalPool(),
                 BlockArchetype.values().length,
                 ConjureFluids.FLUID_POOL,
-                ConjureEntities.totalPool());
+                ConjureEntities.totalPool(),
+                ConjureEntities.SMALL,
+                ConjureEntities.MEDIUM,
+                ConjureEntities.LARGE,
+                ConjureStructures.STRUCTURE_POOL);
     }
 }

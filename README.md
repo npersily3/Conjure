@@ -63,12 +63,24 @@ dev.conjure
 
 1. ✅ Project + item/block pools + provider layer
 2. ✅ **Vertical slice**: `/conjure new "<prompt>"` → Ollama → 16×16 pixel-art → live item
-3. 🚧 Fluid & entity pools (GeckoLib for mob models)
-4. ⬜ Datapack manager (recipes/loot) alongside the resource pack
-5. ⬜ Embedded scripting runtime (Rhino) for slot behavior + sandbox
-6. ⬜ Multi-agent team (orchestrator → logic / texture / data) via `ProviderFactory`
-7. ⬜ `/conjure edit` + persistence of generated slots (survive restart)
-8. ⬜ Dedicated-server sync (slots are client-local right now; singleplayer only)
+3. ✅ Fluid pool (32 sets) + entity pool (128, size buckets) + 100-slot structure bucket
+4. ✅ Embedded **Rhino** scripting runtime + sandbox; behavior wired into items/blocks
+5. ✅ Multi-agent generation (orchestrator → texture / data / logic) via `ProviderFactory`
+6. ✅ Persistence (slots survive restart) + `/conjure list` + `/conjure edit`
+7. ⬜ Entity models via GeckoLib; structure template-pool/jigsaw writer ("a village")
+8. ⬜ Datapack manager for recipes/loot; item tooltips from generated description
+9. ⬜ Dedicated-server sync (slots are client-local right now; singleplayer only)
+10. ⬜ `jarJar` Rhino for a shippable (non-dev) jar
+
+See `src/ARCHITECTURE.md` for an in-depth design write-up.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `/conjure new <prompt>` | Allocate the next free item slot; generate texture + name + behavior; live. |
+| `/conjure list` | List configured item slots (index, name, prompt). |
+| `/conjure edit <index> <prompt>` | Re-generate an existing slot, preserving its id. |
 
 ## Try the slice
 

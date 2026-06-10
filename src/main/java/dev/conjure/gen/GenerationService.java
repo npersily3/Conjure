@@ -1,30 +1,42 @@
 package dev.conjure.gen;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import dev.conjure.Conjure;
 import dev.conjure.ai.ProviderFactory;
-import dev.conjure.ai.TextModelProvider;
+import dev.conjure.ai.agents.DataAgent;
+import dev.conjure.ai.agents.LogicAgent;
+import dev.conjure.ai.agents.TextureAgent;
 import dev.conjure.client.ClientHooks;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
+import dev.conjure.persist.SlotStore;
 import dev.conjure.registry.ConjureItems;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.fml.loading.FMLPaths;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /**
- * The (single) generation agent for the first vertical slice: prompt -> a configured item slot
- * with an LLM-emitted 16x16 texture, applied live. Runs off-thread (the model call blocks for
- * seconds), then the slot store + resource reload take effect; in singleplayer the integrated
- * server and client share this JVM so the live slot is visible immediately.
+ * Orchestrator that fans out to the three specialized sub-agents:
+ * <ol>
+ *   <li>{@link TextureAgent} — produces the 16×16 pixel-art PNG</li>
+ *   <li>{@link DataAgent}    — produces the display name and flavour description</li>
+ *   <li>{@link LogicAgent}   — produces the JS right-click behavior script</li>
+ * </ol>
  *
- * <p>Later this becomes the orchestrator that fans out to logic / texture / data sub-agents.
+ * <p>Agents run sequentially on a single background thread so the main game thread is never
+ * blocked. When all three succeed the orchestrator writes assets to disk, updates the
+ * {@link SlotRegistry}, persists the {@link SlotDefinition}, and triggers a client-side
+ * resource-pack reload (singleplayer only — the integrated server and client share the JVM).
+ *
+ * <p>{@link #generateItem(String, Consumer)} creates a new item slot.
+ * {@link #regenerateItem(int, String, Consumer)} re-runs the full pipeline on an existing slot
+ * (preserving its registry id so existing item stacks continue to work).
  */
 public final class GenerationService {
 
@@ -34,18 +46,17 @@ public final class GenerationService {
         return t;
     });
 
-    private static final String SYSTEM = """
-            You design Minecraft item icons as 16x16 pixel art and respond with ONLY a JSON object,
-            no prose, no markdown fences. Schema:
-            {
-              "displayName": "<short item name>",
-              "palette": { "0": "#00000000", "1": "#RRGGBB", "2": "#RRGGBBAA", ... },
-              "rows": ["................", ... 16 strings of 16 chars each ...]
-            }
-            Each char in a row indexes the palette. Use "0" mapped to "#00000000" for transparent
-            background. Keep a clear silhouette. Exactly 16 rows of exactly 16 characters.
-            """;
+    // -------------------------------------------------------------------------
+    // Public API
+    // -------------------------------------------------------------------------
 
+    /**
+     * Allocates the next free item slot and runs the full generation pipeline.
+     *
+     * @param prompt   user-supplied description of the item
+     * @param feedback callback for progress and result messages (called on the generation thread;
+     *                 callers must post to the server thread if needed)
+     */
     public static void generateItem(String prompt, Consumer<String> feedback) {
         POOL.submit(() -> {
             try {
@@ -54,28 +65,7 @@ public final class GenerationService {
                     feedback.accept("All " + ConjureItems.ITEM_POOL + " item slots are full.");
                     return;
                 }
-
-                TextModelProvider provider = ProviderFactory.text();
-                Conjure.LOGGER.info("Conjure: generating item slot {} via {} for prompt: {}",
-                        slot, provider.id(), prompt);
-                String raw = provider.complete(SYSTEM, prompt);
-                Parsed parsed = parse(raw);
-
-                DynamicPackManager.writeItemTexture(slot, parsed.argb);
-                DynamicPackManager.writeItemModel(slot);
-
-                SlotDefinition def = new SlotDefinition(SlotKind.ITEM, slot);
-                def.displayName = parsed.displayName;
-                def.sourcePrompt = prompt;
-                def.texturePath = "conjure:item/item_slot_" + slot;
-                SlotRegistry.put(def);
-
-                if (FMLEnvironment.dist == Dist.CLIENT) {
-                    ClientHooks.reloadResources();
-                }
-
-                feedback.accept("Conjured '" + parsed.displayName + "' -> item slot #" + slot
-                        + ". Try: /give @s conjure:item_slot_" + slot);
+                runPipeline(slot, prompt, feedback);
             } catch (Exception e) {
                 Conjure.LOGGER.error("Conjure generation failed", e);
                 feedback.accept("Generation failed: " + e.getMessage());
@@ -83,32 +73,90 @@ public final class GenerationService {
         });
     }
 
-    private record Parsed(String displayName, int[][] argb) {}
-
-    private static Parsed parse(String raw) {
-        int start = raw.indexOf('{');
-        int end = raw.lastIndexOf('}');
-        if (start < 0 || end <= start) {
-            throw new IllegalArgumentException("Model returned no JSON object");
-        }
-        JsonObject obj = JsonParser.parseString(raw.substring(start, end + 1)).getAsJsonObject();
-
-        String name = obj.has("displayName") ? obj.get("displayName").getAsString() : "Conjured Item";
-        JsonObject palette = obj.getAsJsonObject("palette");
-        JsonArray rows = obj.getAsJsonArray("rows");
-
-        int height = rows.size();
-        int[][] argb = new int[height][];
-        for (int y = 0; y < height; y++) {
-            String row = rows.get(y).getAsString();
-            argb[y] = new int[row.length()];
-            for (int x = 0; x < row.length(); x++) {
-                String key = String.valueOf(row.charAt(x));
-                String hex = palette.has(key) ? palette.get(key).getAsString() : "#00000000";
-                argb[y][x] = PixelTexture.parseColor(hex);
+    /**
+     * Re-runs the full generation pipeline for an existing item slot, updating its texture,
+     * name, behavior, and persisted metadata while preserving the slot index (so existing
+     * item stacks remain valid).
+     *
+     * @param slotIndex the index of the existing slot to regenerate (0-based)
+     * @param prompt    new description prompt
+     * @param feedback  progress callback
+     */
+    public static void regenerateItem(int slotIndex, String prompt, Consumer<String> feedback) {
+        POOL.submit(() -> {
+            try {
+                if (slotIndex < 0 || slotIndex >= ConjureItems.ITEM_POOL) {
+                    feedback.accept("Invalid slot index " + slotIndex
+                            + " (pool size: " + ConjureItems.ITEM_POOL + ").");
+                    return;
+                }
+                runPipeline(slotIndex, prompt, feedback);
+            } catch (Exception e) {
+                Conjure.LOGGER.error("Conjure regeneration failed for slot {}", slotIndex, e);
+                feedback.accept("Regeneration failed: " + e.getMessage());
             }
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // Internals
+    // -------------------------------------------------------------------------
+
+    /**
+     * Runs all three sub-agents sequentially, assembles the {@link SlotDefinition}, writes
+     * assets to disk, persists metadata, and triggers resource reload.
+     */
+    private static void runPipeline(int slot, String prompt, Consumer<String> feedback) throws Exception {
+        String providerId = ProviderFactory.text().id();
+        Conjure.LOGGER.info("Conjure: generating item slot {} via {} for prompt: {}",
+                slot, providerId, prompt);
+
+        // --- Texture ---------------------------------------------------------
+        feedback.accept("§7[Conjure] Generating texture…");
+        int[][] argb = new TextureAgent().generate(prompt);
+        DynamicPackManager.writeItemTexture(slot, argb);
+        DynamicPackManager.writeItemModel(slot);
+
+        // --- Data (name + description) ---------------------------------------
+        feedback.accept("§7[Conjure] Generating name…");
+        DataAgent.Result data = new DataAgent().generate(prompt);
+
+        // --- Logic (JS behavior script) --------------------------------------
+        feedback.accept("§7[Conjure] Generating behavior script…");
+        String scriptId = "item_" + slot;
+        String scriptSource = new LogicAgent().generate(prompt);
+        writeScript(scriptId, scriptSource);
+
+        // --- Assemble SlotDefinition -----------------------------------------
+        SlotDefinition def = new SlotDefinition(SlotKind.ITEM, slot);
+        def.displayName      = data.displayName();
+        def.sourcePrompt     = prompt;
+        def.texturePath      = "conjure:item/item_slot_" + slot;
+        def.behaviorScriptId = scriptId;
+        def.strings.put("description", data.description());
+
+        SlotRegistry.put(def);
+
+        // --- Persist metadata ------------------------------------------------
+        SlotStore.save(def);
+
+        // --- Client-side reload ----------------------------------------------
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            ClientHooks.reloadResources();
         }
-        return new Parsed(name, argb);
+
+        feedback.accept("Conjured '" + data.displayName() + "' → item slot #" + slot
+                + ". Try: /give @s conjure:item_slot_" + slot);
+    }
+
+    /** Writes the behavior script to {@code <gamedir>/conjure/generated/scripts/<id>.js}. */
+    private static void writeScript(String scriptId, String source) throws Exception {
+        Path dir = FMLPaths.GAMEDIR.get()
+                .resolve("conjure")
+                .resolve("generated")
+                .resolve("scripts");
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve(scriptId + ".js"), source);
     }
 
     private GenerationService() {}
