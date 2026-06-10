@@ -38,7 +38,11 @@ neoForge {
         }
         configureEach {
             gameDirectory = project.file('run')
-            jvmArgument '-XX:+AllowEnhancedClassRedefinition' // harmless if JVM lacks it; helps live HotSwap
+            // -XX:+AllowEnhancedClassRedefinition only exists in the JetBrains Runtime (helps live
+            // HotSwap). On a stock JDK an unrecognized -XX flag is fatal, so guard it with
+            // IgnoreUnrecognizedVMOptions, which must come first to cover the flag that follows.
+            jvmArgument '-XX:+IgnoreUnrecognizedVMOptions'
+            jvmArgument '-XX:+AllowEnhancedClassRedefinition'
         }
     }
 

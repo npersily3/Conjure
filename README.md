@@ -1,6 +1,6 @@
 # Conjure
 
-AI-driven, on-the-fly Minecraft content for **NeoForge 1.21.1**.
+AI-driven, on-the-fly Minecraft content for **NeoForge 1.21.1**. Warning this was vibe-coded
 
 In-game you type a command and a team of AI agents generates a new item (logic, texture, and
 name) that appears **without relaunching the game**, up to fixed pool sizes. Blocks, fluids,
