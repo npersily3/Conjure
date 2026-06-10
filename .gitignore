@@ -1,0 +1,15 @@
+# Build output
+build/
+out/
+.gradle/
+
+# Dev runtime (generated worlds, packs, logs)
+run/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+*.log
