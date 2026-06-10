@@ -29,7 +29,7 @@ public final class Config {
         b.comment("Text / logic model routing (orchestrator, logic, data agents)").push("text");
         TEXT_MODE = b.comment("ANTHROPIC (cloud) or LOCAL (Ollama/LM Studio/llama.cpp)")
                  .defineEnum("provider", ProviderMode.LOCAL);
-       LOCAL_TEXT_ENDPOINT = b.define("localEndpoint", "http://localhost:11434");
+       LOCAL_TEXT_ENDPOINT = b.define("localEndpoint", "http://127.0.0.1:11434");
         LOCAL_TEXT_MODEL = b.define("localModel", "llama3.3:latest");
         ANTHROPIC_MODEL = b.define("anthropicModel", "claude-sonnet-4-6");
         ANTHROPIC_KEY_ENV = b.comment("Name of the environment variable holding the API key")

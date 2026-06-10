@@ -48,12 +48,26 @@ public final class OllamaProvider implements TextModelProvider {
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                 .build();
 
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response;
+        try {
+            response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (java.net.ConnectException e) {
+            throw new RuntimeException("Cannot reach Ollama at " + endpoint
+                    + " — is the Ollama server running? (try `ollama serve`)", e);
+        }
+        if (response.statusCode() == 404) {
+            throw new RuntimeException("Ollama has no model named '" + model + "' (HTTP 404). "
+                    + "Pull it with `ollama pull " + model + "` or change localModel in conjure-common.toml.");
+        }
         if (response.statusCode() / 100 != 2) {
             throw new RuntimeException("Ollama " + response.statusCode() + ": " + response.body());
         }
         JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
-        return json.getAsJsonObject("message").get("content").getAsString();
+        JsonObject message = json.getAsJsonObject("message");
+        if (message == null || !message.has("content")) {
+            throw new RuntimeException("Unexpected Ollama response (no message.content): " + response.body());
+        }
+        return message.get("content").getAsString();
     }
 
     @Override

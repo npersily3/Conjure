@@ -49,7 +49,7 @@ public final class SlotStore {
      * @throws IOException on file-system errors
      */
     public static void save(SlotDefinition def) throws IOException {
-        Path file = slotFile(def.slotIndex);
+        Path file = slotFile(def.kind, def.slotIndex);
         Files.createDirectories(file.getParent());
 
         JsonObject obj = new JsonObject();
@@ -89,7 +89,7 @@ public final class SlotStore {
         }
 
         try (var stream = Files.list(slotsDir)) {
-            stream.filter(p -> p.getFileName().toString().matches("item_\\d+\\.json"))
+            stream.filter(p -> p.getFileName().toString().matches("[a-z]+_\\d+\\.json"))
                   .forEach(SlotStore::loadOne);
         } catch (IOException e) {
             Conjure.LOGGER.error("Conjure: failed to list slot store directory", e);
@@ -101,12 +101,15 @@ public final class SlotStore {
     // -------------------------------------------------------------------------
 
     private static void loadOne(Path file) {
-        String name = file.getFileName().toString(); // "item_<n>.json"
+        String name = file.getFileName().toString(); // "<kind>_<n>.json"
+        String stem = name.substring(0, name.length() - ".json".length());
+        int sep = stem.lastIndexOf('_');
+        SlotKind kind;
         int index;
         try {
-            String numPart = name.substring("item_".length(), name.length() - ".json".length());
-            index = Integer.parseInt(numPart);
-        } catch (NumberFormatException e) {
+            kind = SlotKind.valueOf(stem.substring(0, sep).toUpperCase(java.util.Locale.ROOT));
+            index = Integer.parseInt(stem.substring(sep + 1));
+        } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
             Conjure.LOGGER.warn("Conjure SlotStore: skipping unrecognised file {}", name);
             return;
         }
@@ -121,7 +124,7 @@ public final class SlotStore {
 
         try {
             JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
-            SlotDefinition def = new SlotDefinition(SlotKind.ITEM, index);
+            SlotDefinition def = new SlotDefinition(kind, index);
 
             if (obj.has("displayName"))      def.displayName      = obj.get("displayName").getAsString();
             if (obj.has("texturePath"))      def.texturePath      = obj.get("texturePath").getAsString();
@@ -138,7 +141,7 @@ public final class SlotStore {
             }
 
             SlotRegistry.put(def);
-            Conjure.LOGGER.debug("Conjure SlotStore: restored item slot {} (\"{}\")", index, def.displayName);
+            Conjure.LOGGER.debug("Conjure SlotStore: restored {} slot {} (\"{}\")", kind, index, def.displayName);
         } catch (Exception e) {
             Conjure.LOGGER.error("Conjure SlotStore: failed to parse {}", file, e);
         }
@@ -148,7 +151,7 @@ public final class SlotStore {
         return FMLPaths.GAMEDIR.get().resolve("conjure").resolve("slots");
     }
 
-    private static Path slotFile(int index) {
-        return slotsRoot().resolve("item_" + index + ".json");
+    private static Path slotFile(SlotKind kind, int index) {
+        return slotsRoot().resolve(kind.name().toLowerCase(java.util.Locale.ROOT) + "_" + index + ".json");
     }
 }

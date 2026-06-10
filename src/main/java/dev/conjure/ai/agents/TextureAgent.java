@@ -14,6 +14,9 @@ import dev.conjure.gen.PixelTexture;
  */
 public final class TextureAgent {
 
+    /** Edge length of the generated icon; the grid is normalized to exactly this many rows/cols. */
+    private static final int SIZE = 16;
+
     private static final String SYSTEM = """
             You design Minecraft item icons as 16x16 pixel art and respond with ONLY a JSON object,
             no prose, no markdown fences. Schema:
@@ -46,16 +49,24 @@ public final class TextureAgent {
     // Internals
     // -------------------------------------------------------------------------
 
+    /**
+     * Decodes the model's palette/rows into a strict {@code SIZE}×{@code SIZE} ARGB grid.
+     * Local models routinely ignore the "exactly 16×16" instruction and emit jagged rows or the
+     * wrong count, so we normalize defensively: missing/short rows and cells default to transparent,
+     * and any excess rows/columns are dropped. This guarantees a clean rectangle for
+     * {@link PixelTexture#writePng} regardless of what the model returned.
+     */
     private static int[][] decode(JsonObject obj) {
         JsonObject palette = obj.getAsJsonObject("palette");
         JsonArray rows = obj.getAsJsonArray("rows");
 
-        int height = rows.size();
-        int[][] argb = new int[height][];
-        for (int y = 0; y < height; y++) {
+        int[][] argb = new int[SIZE][SIZE]; // initialized to 0 == transparent
+        if (rows == null) return argb;
+
+        for (int y = 0; y < SIZE && y < rows.size(); y++) {
+            if (rows.get(y).isJsonNull()) continue;
             String row = rows.get(y).getAsString();
-            argb[y] = new int[row.length()];
-            for (int x = 0; x < row.length(); x++) {
+            for (int x = 0; x < SIZE && x < row.length(); x++) {
                 String key = String.valueOf(row.charAt(x));
                 String hex = (palette != null && palette.has(key))
                         ? palette.get(key).getAsString()

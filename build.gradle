@@ -57,7 +57,20 @@ dependencies {
     // Gson and the Java 21 HttpClient (java.net.http) are already on the
     // Minecraft/NeoForge classpath, so the AI provider layer needs no extra deps yet.
     // Later: GeckoLib for data-driven mob models.
-    implementation 'org.mozilla:rhino:1.7.15' // TODO: jarJar for production runtime classpath
+
+    // Rhino (sandboxed JS behavior runtime). NeoForge does not put plain library deps on the
+    // mod runtime classpath, so a bare `implementation` compiles but throws NoClassDefFoundError
+    // at runtime. Two configs are required:
+    //   - jarJar(...)              bundles Rhino into the production jar (jar-in-jar) AND acts as
+    //                              the compile (implementation) dependency.
+    //   - additionalRuntimeClasspath makes it available in dev runs (runClient/runServer).
+    jarJar(implementation('org.mozilla:rhino')) {
+        version {
+            strictly '[1.7.15,1.8)'
+            prefer '1.7.15'
+        }
+    }
+    additionalRuntimeClasspath 'org.mozilla:rhino:1.7.15'
 }
 
 // Expand mod metadata placeholders into neoforge.mods.toml at build time

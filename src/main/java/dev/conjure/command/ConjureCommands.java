@@ -20,7 +20,8 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
  * Registers all {@code /conjure} sub-commands.
  *
  * <ul>
- *   <li>{@code /conjure new <prompt>} — generate a new item slot from a natural-language prompt.
+ *   <li>{@code /conjure new <prompt>} — generate new content; a {@link dev.conjure.ai.agents.RouterAgent}
+ *       decides whether the prompt becomes an item or a (placeable) block and runs that pipeline.
  *   <li>{@code /conjure list} — list all currently configured item slots (index, name, prompt).
  *   <li>{@code /conjure edit <index> <prompt>} — re-run generation on an existing slot,
  *       updating its texture, name, and behavior while preserving its registry id.
@@ -48,7 +49,7 @@ public final class ConjureCommands {
                                                     () -> Component.literal("§7Conjuring \"" + prompt + "\"… (this may take a few seconds)"),
                                                     false);
 
-                                            GenerationService.generateItem(prompt, msg ->
+                                            GenerationService.generate(prompt, msg ->
                                                     server.execute(() -> source.sendSystemMessage(
                                                             Component.literal("§a[Conjure] §f" + msg))));
                                             return 1;

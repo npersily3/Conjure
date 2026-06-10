@@ -44,5 +44,39 @@ public final class DynamicPackManager {
         Files.writeString(root().resolve("assets/conjure/models/item/item_slot_" + slot + ".json"), json);
     }
 
+    // -------------------------------------------------------------------------
+    // Blocks — a block needs four files to render: texture, block model, blockstate,
+    // and a block-item model (so it shows in the inventory / in-hand). All faces share
+    // one texture via minecraft:block/cube_all.
+    // -------------------------------------------------------------------------
+
+    public static void writeBlockTexture(int slot, int[][] argb) throws IOException {
+        PixelTexture.writePng(argb, root().resolve("assets/conjure/textures/block/block_slot_" + slot + ".png"));
+    }
+
+    public static void writeBlockModel(int slot) throws IOException {
+        String json = "{\n  \"parent\": \"minecraft:block/cube_all\",\n"
+                + "  \"textures\": { \"all\": \"conjure:block/block_slot_" + slot + "\" }\n}";
+        write("assets/conjure/models/block/block_slot_" + slot + ".json", json);
+    }
+
+    public static void writeBlockState(int slot) throws IOException {
+        String json = "{\n  \"variants\": { \"\": { \"model\": \"conjure:block/block_slot_" + slot + "\" } }\n}";
+        write("assets/conjure/blockstates/block_slot_" + slot + ".json", json);
+    }
+
+    /** Inventory/in-hand model for the block's BlockItem — inherits the block model. */
+    public static void writeBlockItemModel(int slot) throws IOException {
+        String json = "{ \"parent\": \"conjure:block/block_slot_" + slot + "\" }";
+        write("assets/conjure/models/item/block_slot_" + slot + ".json", json);
+    }
+
+    /** Writes text to a path under the pack root, creating parent directories as needed. */
+    private static void write(String relativePath, String content) throws IOException {
+        Path out = root().resolve(relativePath);
+        Files.createDirectories(out.getParent());
+        Files.writeString(out, content);
+    }
+
     private DynamicPackManager() {}
 }
