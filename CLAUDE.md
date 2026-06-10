@@ -61,6 +61,14 @@ Roadmap lives in `README.md`. Pools: items+blocks done; fluids/entities/structur
 scripting + multi-agent generation + persistence + `/conjure list|edit` are the current build.
 Singleplayer only for now (slots are client-local; dedicated-server sync is future).
 
+## Parallel agent work (default for multi-part tasks)
+When a task splits into 2+ independent parts, FAN OUT to parallel sub-agents instead of doing
+them in series. Launch one `Agent(isolation: "worktree", model: "sonnet")` per lane, all in a
+single message. This only works when Claude was started from the repo root (so worktrees can be
+created). Follow `docs/PARALLEL_AGENTS.md`: disjoint ownership lanes, frozen shared contracts
+(`SlotKind`/`SlotDefinition`/`SlotRegistry`/`Config`), seams defined before spawning, each agent
+compiles its own worktree, parent merges + does one clean compile + commits.
+
 ## Conventions for working here
 - Commit/branch only when asked. Don't skip hooks.
 - Keep changes compiling; run `./gradlew compileJava` before declaring done.
