@@ -16,6 +16,8 @@ java {
 
 repositories {
     mavenCentral()
+    // GeckoLib (animated entity/block models)
+    maven { url 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/' }
 }
 
 neoForge {
@@ -71,6 +73,11 @@ dependencies {
         }
     }
     additionalRuntimeClasspath 'org.mozilla:rhino:1.7.15'
+
+    // GeckoLib is itself a NeoForge mod (has an FMLModType), so a plain implementation dep is
+    // loaded in dev runs; shipped users install it as a required dependency (declared in
+    // neoforge.mods.toml). Used by the entity renderer for generated mobs.
+    implementation 'software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.6'
 }
 
 // Expand mod metadata placeholders into neoforge.mods.toml at build time
