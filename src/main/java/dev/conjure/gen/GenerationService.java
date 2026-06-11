@@ -4,9 +4,11 @@ import dev.conjure.Conjure;
 import dev.conjure.ai.agents.RouterAgent;
 import dev.conjure.content.SlotKind;
 import dev.conjure.gen.pipeline.BlockPipeline;
+import dev.conjure.gen.pipeline.FluidPipeline;
 import dev.conjure.gen.pipeline.GenerationPipeline;
 import dev.conjure.gen.pipeline.ItemPipeline;
 import dev.conjure.gen.pipeline.PipelineSupport;
+import dev.conjure.gen.pipeline.StructurePipeline;
 import dev.conjure.registry.ConjureItems;
 
 import java.util.EnumMap;
@@ -46,6 +48,9 @@ public final class GenerationService {
     static {
         PIPELINES.put(SlotKind.ITEM, ITEM_PIPELINE);
         PIPELINES.put(SlotKind.BLOCK, new BlockPipeline());
+        PIPELINES.put(SlotKind.FLUID, new FluidPipeline());
+        PIPELINES.put(SlotKind.STRUCTURE, new StructurePipeline());
+        // ENTITY is registered once Lane 3's EntityPipeline lands.
     }
 
     // -------------------------------------------------------------------------

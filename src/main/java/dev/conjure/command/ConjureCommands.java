@@ -8,6 +8,7 @@ import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
 import dev.conjure.content.structure.StructurePlacer;
 import dev.conjure.gen.GenerationService;
+import dev.conjure.gen.ModService;
 import dev.conjure.gen.pipeline.PipelineSupport;
 import dev.conjure.registry.ConjureItems;
 import dev.conjure.registry.ConjureStructures;
@@ -168,6 +169,24 @@ public final class ConjureCommands {
                                                         "§cPlacement failed: " + PipelineSupport.describe(e)));
                                                 return 0;
                                             }
+                                        })))
+
+                        // /conjure mod <description> — decompose a whole-mod request into many generated pieces
+                        .then(Commands.literal("mod")
+                                .then(Commands.argument("description", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            String description = StringArgumentType.getString(ctx, "description");
+                                            CommandSourceStack source = ctx.getSource();
+                                            MinecraftServer server = source.getServer();
+
+                                            source.sendSuccess(
+                                                    () -> Component.literal("§7Planning mod \"" + description + "\"… (this may take a minute)"),
+                                                    false);
+
+                                            ModService.buildMod(description, msg ->
+                                                    server.execute(() -> source.sendSystemMessage(
+                                                            Component.literal("§a[Conjure] §f" + msg))));
+                                            return 1;
                                         }))));
     }
 
