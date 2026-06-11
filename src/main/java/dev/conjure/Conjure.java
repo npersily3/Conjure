@@ -2,7 +2,9 @@ package dev.conjure;
 
 import com.mojang.logging.LogUtils;
 import dev.conjure.content.block.BlockArchetype;
+import dev.conjure.registry.ConjureBlockEntities;
 import dev.conjure.registry.ConjureBlocks;
+import dev.conjure.registry.ConjureMenus;
 import dev.conjure.registry.ConjureEntities;
 import dev.conjure.registry.ConjureFluids;
 import dev.conjure.registry.ConjureItems;
@@ -29,6 +31,8 @@ public final class Conjure {
     public Conjure(IEventBus modBus, ModContainer container) {
         ConjureItems.ITEMS.register(modBus);   // 500 item shells + every block's BlockItem
         ConjureBlocks.BLOCKS.register(modBus); // 500 block shells across archetype buckets
+        ConjureBlockEntities.BLOCK_ENTITIES.register(modBus); // shared machine BlockEntity (MACHINE blocks)
+        ConjureMenus.MENUS.register(modBus);   // shared machine container menu
         ConjureFluids.register(modBus);        // 32 fluid sets (source+flowing+block+bucket)
         ConjureEntities.register(modBus);      // 128 mob slots across 3 size buckets
         ConjureStructures.register(modBus);    // 1 StructureType for 100 datapack structure slots
