@@ -1,6 +1,7 @@
 package dev.conjure.registry;
 
 import dev.conjure.Conjure;
+import dev.conjure.client.ConjureMobRenderer;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
 import dev.conjure.content.entity.ConjureMob;
@@ -36,10 +37,10 @@ import java.util.List;
  * from {@link SlotRegistry} and therefore can be updated at runtime by swapping the
  * {@link dev.conjure.content.SlotDefinition} for that slot.
  *
- * <p>TODO(GeckoLib): The placeholder renderer ({@link net.minecraft.client.renderer.entity.NoopRenderer})
- * should be replaced with a GeckoLib-backed animated model once the GeckoLib dependency
- * is added to the project.  Texture path will then come from
- * {@code SlotDefinition#texturePath}.
+ * <p>The client-side renderer is a {@link dev.conjure.client.ConjureMobRenderer} (GeckoLib
+ * {@code GeoEntityRenderer}) backed by the shared {@link dev.conjure.client.ConjureMobModel}.
+ * Per-slot textures come from {@code SlotDefinition#texturePath}; unconfigured slots fall
+ * back to the bundled {@code textures/entity/default.png}.
  */
 public final class ConjureEntities {
 
@@ -120,10 +121,9 @@ public final class ConjureEntities {
     }
 
     /**
-     * Client-only: registers a placeholder renderer for all Conjure mob types.
-     *
-     * <p>TODO(GeckoLib): Replace {@link net.minecraft.client.renderer.entity.NoopRenderer}
-     * with a GeckoLib {@code GeoEntityRenderer} once the GeckoLib dependency is integrated.
+     * Client-only: registers the GeckoLib-backed {@link ConjureMobRenderer} for all Conjure
+     * mob entity types. Each slot gets its own renderer instance (required by the Minecraft
+     * renderer provider API), but all instances share the singleton {@link dev.conjure.client.ConjureMobModel}.
      */
     @EventBusSubscriber(modid = Conjure.MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
     public static final class ClientEvents {
@@ -131,8 +131,7 @@ public final class ConjureEntities {
         @SubscribeEvent
         public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
             for (DeferredHolder<EntityType<?>, EntityType<ConjureMob>> holder : ENTITY_TYPE_SLOTS) {
-                event.registerEntityRenderer(holder.get(),
-                        net.minecraft.client.renderer.entity.NoopRenderer::new);
+                event.registerEntityRenderer(holder.get(), ConjureMobRenderer::new);
             }
         }
     }

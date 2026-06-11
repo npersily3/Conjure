@@ -4,6 +4,7 @@ import dev.conjure.Conjure;
 import dev.conjure.ai.agents.RouterAgent;
 import dev.conjure.content.SlotKind;
 import dev.conjure.gen.pipeline.BlockPipeline;
+import dev.conjure.gen.pipeline.EntityPipeline;
 import dev.conjure.gen.pipeline.FluidPipeline;
 import dev.conjure.gen.pipeline.GenerationPipeline;
 import dev.conjure.gen.pipeline.ItemPipeline;
@@ -50,7 +51,7 @@ public final class GenerationService {
         PIPELINES.put(SlotKind.BLOCK, new BlockPipeline());
         PIPELINES.put(SlotKind.FLUID, new FluidPipeline());
         PIPELINES.put(SlotKind.STRUCTURE, new StructurePipeline());
-        // ENTITY is registered once Lane 3's EntityPipeline lands.
+        PIPELINES.put(SlotKind.ENTITY, new EntityPipeline());
     }
 
     // -------------------------------------------------------------------------
