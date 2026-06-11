@@ -27,8 +27,9 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
  * Registers all {@code /conjure} sub-commands.
  *
  * <ul>
- *   <li>{@code /conjure new <prompt>} — generate new content; a {@link dev.conjure.ai.agents.RouterAgent}
- *       decides whether the prompt becomes an item or a (placeable) block and runs that pipeline.
+ *   <li>{@code /conjure new <prompt>} — generate new content. A single concrete prompt yields one
+ *       piece; a themed or plural prompt ("pagoda blocks") is decomposed into many pieces. Each
+ *       piece is routed by {@link dev.conjure.ai.agents.RouterAgent} to its content pipeline.
  *   <li>{@code /conjure list} — list all currently configured item slots (index, name, prompt).
  *   <li>{@code /conjure edit <index> <prompt>} — re-run generation on an existing slot,
  *       updating its texture, name, and behavior while preserving its registry id.
@@ -56,9 +57,11 @@ public final class ConjureCommands {
                                                     () -> Component.literal("§7Conjuring \"" + prompt + "\"… (this may take a few seconds)"),
                                                     false);
 
-                                            GenerationService.generate(prompt, msg ->
+                                            // Smart mode: a single concrete prompt yields one piece;
+                                            // themed/plural prompts expand into many.
+                                            ModService.build(prompt, msg ->
                                                     server.execute(() -> source.sendSystemMessage(
-                                                            Component.literal("§a[Conjure] §f" + msg))));
+                                                            Component.literal("§a[Conjure] §f" + msg))), false);
                                             return 1;
                                         })))
 

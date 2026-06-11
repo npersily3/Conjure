@@ -9,7 +9,7 @@ should become — an **item**, a **block** (including interactive workbench/kiln
 generation pipeline. You can even ask for a whole mod at once.
 
 ```
-/conjure new <prompt>            generate content live; the router picks item/block/fluid/entity/structure
+/conjure new <prompt>            generate live; one concrete prompt → one piece, a themed/plural prompt → many
 /conjure mod <description>       decompose a whole-mod idea into many pieces and generate each
 /conjure place <index>           build a generated structure near you
 /conjure list                    list configured item slots
@@ -28,10 +28,12 @@ generation pipeline. You can even ask for a whole mod at once.
     (the file is created on first launch; default endpoint `http://127.0.0.1:11434`).
   - To use Anthropic instead: `[text] provider = "ANTHROPIC"` and export your key into the env var
     named by `[text] anthropicKeyEnv` (default `ANTHROPIC_API_KEY`).
-- **Image model** (the textures — optional). For high-quality textures, run a local
-  **AUTOMATIC1111 / Forge** server with `--api` and point `[image] localEndpoint` at it
-  (e.g. `http://127.0.0.1:7860`). If no image server is reachable, Conjure **falls back** to having
-  the text model emit pixel-art — so everything still works, the icons are just simpler.
+- **Image model** (the textures — optional). For high-quality textures, run a local **ComfyUI**
+  server and point `[image] localEndpoint` at it (e.g. `http://127.0.0.1:8188`). Set
+  `[image] fastModel`/`highModel` to a checkpoint filename present in `ComfyUI/models/checkpoints`
+  (default `v1-5-pruned-emaonly.safetensors`). If no image server is reachable, Conjure **falls
+  back** to having the text model emit pixel-art — so everything still works, the icons are just
+  simpler.
 - **GeckoLib** (entity models) is a required mod dependency; in the dev workspace it's pulled in
   automatically by Gradle.
 
@@ -47,12 +49,12 @@ generated **runClient** task in IntelliJ.
 1. **Singleplayer → Create New World** → Game Mode **Creative**, **Allow Cheats: ON**.
 2. In chat, describe what you want — the router figures out the kind:
    ```
-   /conjure new a glowing ember dagger that heals you when used   (→ item)
-   /conjure new a mossy enchanted stone block                     (→ block)
-   /conjure new a brass kiln that smelts ore                      (→ interactive machine block)
-   /conjure new a glowing blue magical fluid                      (→ fluid + bucket)
-   /conjure new a shadow wraith                                   (→ GeckoLib entity)
-   /conjure new a small ruined watchtower                         (→ structure)
+   /conjure new a glowing ember dagger that heals you when used   (→ one item)
+   /conjure new a mossy enchanted stone block                     (→ one block)
+   /conjure new a brass kiln that smelts ore                      (→ one interactive machine block)
+   /conjure new a glowing blue magical fluid                      (→ one fluid + bucket)
+   /conjure new a shadow wraith                                   (→ one GeckoLib entity)
+   /conjure new pagoda themed blocks                              (→ many blocks — themed/plural expands)
    ```
    Watch chat for progress, then the result line tells you how to get it
    (`/give @s conjure:item_slot_0`, `/summon conjure:entity_slot_0`, `/conjure place 0`, …).
@@ -67,7 +69,7 @@ Generated assets live under `run/conjure/` — `generated/` (textures, models, s
 
 ### Feature toggles
 `run/config/conjure-common.toml`:
-- `[image] quality = FAST | HIGH` — FAST (turbo model, ~64px, seconds) vs HIGH (e.g. FLUX, ~128px, slow).
+- `[image] quality = FAST | HIGH` — FAST (fewer steps, 512px native, seconds) vs HIGH (more steps, 768px native, slow).
 - `[features] entityAnimations` — play GeckoLib idle/walk animations on mobs (off = static pose).
 - `[features] interactivity` — allow generated blocks to be machines / scripted (off = inert blocks).
 
@@ -75,7 +77,7 @@ Generated assets live under `run/conjure/` — `generated/` (textures, models, s
 | Symptom | Fix |
 |---|---|
 | `Generation failed: …Cannot reach Ollama` | Start the text server; check `[text]` endpoint/model. On Windows use `127.0.0.1`, not `localhost`. |
-| Textures look like simple pixel-art | No image server reachable — it fell back. Start A1111/Forge `--api` and set `[image] localEndpoint`. |
+| Textures look like simple pixel-art | No image server reachable — it fell back. Start ComfyUI and set `[image] localEndpoint`/`fastModel`. |
 | Block/entity shows black-and-purple "missing" | Only **generated** slots have assets; unconfigured pool slots look broken — expected. |
 | Texture didn't update after `edit` | Press **F3+T** to force a resource reload (normally automatic). |
 | Build error after editing | `./gradlew compileJava --no-daemon` and read the first error. |
@@ -111,7 +113,7 @@ Behavior is sandboxed **Rhino** JavaScript with a small `ctx` host API
 ## Model routing (local or cloud)
 
 `run/config/conjure-common.toml` selects providers per task. **Text** defaults to local Ollama
-(or Anthropic). **Image** defaults to a local AUTOMATIC1111/Forge REST backend, with an automatic
+(or Anthropic). **Image** defaults to a local **ComfyUI** backend, with an automatic
 LLM-pixel-art fallback. Anthropic keys are read from an env var, never stored in config. See
 `dev.conjure.Config` and `dev.conjure.ai.*`.
 
@@ -125,7 +127,7 @@ dev.conjure
 │                                   + block BlockEntity/Menu + structure StructurePlacer
 ├─ registry/                        the pre-registered pools (Items/Blocks/Fluids/Entities/
 │                                   Structures) + BlockEntities + Menus + creative Tab
-├─ ai/  ├─ providers (Ollama/Anthropic text, A1111 image, ProviderFactory)
+├─ ai/  ├─ providers (Ollama/Anthropic text, ComfyUI image, ProviderFactory)
 │       └─ agents/ (Router, Texture, Data, Logic, Machine, ModPlanner, JsonHelper)
 ├─ gen/                             GenerationService dispatcher + ModService
 │   └─ pipeline/                    GenerationPipeline per kind (Item/Block/Fluid/Entity/Structure)
@@ -148,7 +150,7 @@ Full design rationale: **`src/ARCHITECTURE.md`**. Contributing with parallel age
 5. ✅ Multi-agent generation (router → per-kind pipeline → texture / data / logic)
 6. ✅ Persistence (kind-aware) + `/conjure list` + `/conjure edit`
 7. ✅ All kinds generate end-to-end (router dispatches item/block/fluid/entity/structure)
-8. ✅ Local image-gen textures (A1111/Forge, FAST/HIGH) with LLM-pixel-art fallback
+8. ✅ Local image-gen textures (ComfyUI, FAST/HIGH) with LLM-pixel-art fallback
 9. ✅ Interactive blocks (BlockEntity + container GUI machines, and script-driven blocks)
 10. ✅ Entity models via GeckoLib (per-slot skin, toggleable animations)
 11. ✅ Command-placed structures (`/conjure place`); Mod Architect (`/conjure mod`); creative tab; names everywhere

@@ -13,7 +13,7 @@ import dev.conjure.gen.PixelTexture;
 /**
  * Sub-agent responsible for producing a pixel-art texture from a natural-language prompt.
  *
- * <p>Primary path: if a local image backend (A1111) is configured, delegate to
+ * <p>Primary path: if a local image backend (ComfyUI) is configured, delegate to
  * {@link ProviderFactory#image()} and decode the returned PNG via {@link PixelTexture#fromPng}.
  *
  * <p>Fallback path: the text model is asked to emit a JSON palette + 16-row grid; this class
@@ -40,7 +40,7 @@ public final class TextureAgent {
     /**
      * Generates a pixel-art texture for {@code prompt}.
      *
-     * <p>First tries the configured image provider (A1111). If no provider is available or
+     * <p>First tries the configured image provider (ComfyUI). If no provider is available or
      * it fails for any reason, falls back to the LLM pixel-art strategy. Never throws — on
      * total failure returns a transparent grid rather than breaking generation.
      *

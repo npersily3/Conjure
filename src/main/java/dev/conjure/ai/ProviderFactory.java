@@ -15,14 +15,15 @@ public final class ProviderFactory {
     /**
      * Returns the active image provider, or {@code null} if image generation is not in LOCAL mode.
      *
-     * <p>When {@link Config#IMAGE_MODE} is {@link ProviderMode#LOCAL} this builds an
-     * {@link A1111Provider} wired from the image config block:
+     * <p>When {@link Config#IMAGE_MODE} is {@link ProviderMode#LOCAL} this builds a
+     * {@link ComfyUIProvider} wired from the image config block:
      * <ul>
-     *   <li>{@link ImageQuality#FAST} — uses {@code IMAGE_FAST_MODEL} with ~8 steps</li>
-     *   <li>{@link ImageQuality#HIGH} — uses {@code IMAGE_HIGH_MODEL} with ~25 steps</li>
+     *   <li>{@link ImageQuality#FAST} — {@code IMAGE_FAST_MODEL}, ~8 steps, 512px native</li>
+     *   <li>{@link ImageQuality#HIGH} — {@code IMAGE_HIGH_MODEL}, ~25 steps, 768px native</li>
      * </ul>
-     * When mode is ANTHROPIC (Anthropic models do not emit images) {@code null} is returned so
-     * the caller can fall back to the LLM pixel-art strategy.
+     * The native size is the diffusion resolution; {@code TextureAgent} downscales it to the small
+     * texture target. When mode is ANTHROPIC (Anthropic models do not emit images) {@code null} is
+     * returned so the caller can fall back to the LLM pixel-art strategy.
      */
     public static ImageModelProvider image() {
         if (Config.IMAGE_MODE.get() != ProviderMode.LOCAL) {
@@ -31,10 +32,10 @@ public final class ProviderFactory {
         String endpoint = Config.LOCAL_IMAGE_ENDPOINT.get();
         ImageQuality quality = Config.IMAGE_QUALITY.get();
         if (quality == ImageQuality.HIGH) {
-            return new A1111Provider(endpoint, Config.IMAGE_HIGH_MODEL.get(), 25);
+            return new ComfyUIProvider(endpoint, Config.IMAGE_HIGH_MODEL.get(), 25, 768);
         }
         // FAST (default)
-        return new A1111Provider(endpoint, Config.IMAGE_FAST_MODEL.get(), 8);
+        return new ComfyUIProvider(endpoint, Config.IMAGE_FAST_MODEL.get(), 8, 512);
     }
 
     private ProviderFactory() {}

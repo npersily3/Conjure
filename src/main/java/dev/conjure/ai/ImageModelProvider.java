@@ -2,7 +2,7 @@ package dev.conjure.ai;
 
 /**
  * A texture generator. For Conjure the default is a LOCAL open-source image backend
- * (ComfyUI / Automatic1111 / sd.cpp), since Anthropic models don't emit images.
+ * (ComfyUI), since Anthropic models don't emit images.
  *
  * <p>A second, dependency-free strategy worth keeping: have the text model emit a small
  * pixel array directly (16x16 textures are tiny) and encode it to PNG in-process. That path

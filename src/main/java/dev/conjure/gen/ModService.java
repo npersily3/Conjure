@@ -63,31 +63,45 @@ public final class ModService {
      *                        must re-schedule to the server thread before touching game state
      */
     public static void buildMod(String modDescription, Consumer<String> feedback) {
+        build(modDescription, feedback, true);
+    }
+
+    /**
+     * Plans {@code description} into pieces and enqueues each on the generation pool.
+     *
+     * <p>This method returns immediately; all work happens on a daemon background thread.
+     *
+     * @param description the content request
+     * @param feedback    progress and result callback — invoked on the planner thread for plan
+     *                    messages, then on the generation thread for per-piece messages; callers
+     *                    must re-schedule to the server thread before touching game state
+     * @param expansive   {@code true} for whole-mod planning (always many pieces, {@code /conjure
+     *                    mod}); {@code false} for smart auto mode where a single concrete prompt
+     *                    yields one piece and themed/plural prompts expand ({@code /conjure new})
+     */
+    public static void build(String description, Consumer<String> feedback, boolean expansive) {
         Thread planner = new Thread(() -> {
             try {
-                feedback.accept("§7[Conjure] Planning mod: \"" + modDescription + "\"…");
+                List<String> pieces = new ModPlannerAgent().plan(description, expansive);
 
-                List<String> pieces = new ModPlannerAgent().plan(modDescription);
-
-                // Summarise the plan for the player before generation starts.
-                feedback.accept("§7[Conjure] Mod plan (" + pieces.size() + " piece"
-                        + (pieces.size() == 1 ? "" : "s") + "):");
-                for (int i = 0; i < pieces.size(); i++) {
-                    final int idx = i + 1;
-                    final String piece = pieces.get(i);
-                    feedback.accept("§7[Conjure]   " + idx + ". " + piece);
+                // For a single piece, skip the plan summary so a plain /conjure new isn't noisy.
+                if (pieces.size() > 1) {
+                    feedback.accept("§7[Conjure] Plan (" + pieces.size() + " pieces):");
+                    for (int i = 0; i < pieces.size(); i++) {
+                        feedback.accept("§7[Conjure]   " + (i + 1) + ". " + pieces.get(i));
+                    }
+                    feedback.accept("§7[Conjure] Queuing generation — pieces will arrive as they complete.");
                 }
-                feedback.accept("§7[Conjure] Queuing generation — pieces will arrive as they complete.");
 
                 // Enqueue each piece on the existing generation pool. They run sequentially on that
                 // pool's single thread, so they won't interfere with each other or any concurrent
-                // /conjure new calls already queued.
+                // calls already queued.
                 for (String piece : pieces) {
                     GenerationService.generate(piece, feedback);
                 }
             } catch (Exception e) {
-                Conjure.LOGGER.error("Conjure mod planning failed for: {}", modDescription, e);
-                feedback.accept("Mod planning failed: " + describe(e));
+                Conjure.LOGGER.error("Conjure planning failed for: {}", description, e);
+                feedback.accept("Planning failed: " + describe(e));
             }
         }, "conjure-mod-planner");
         planner.setDaemon(true);

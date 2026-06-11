@@ -16,7 +16,7 @@ public final class PixelTexture {
      * {@code targetSize}×{@code targetSize} using nearest-neighbour resampling (which preserves
      * the pixelated look for Minecraft textures).
      *
-     * @param png        raw PNG bytes (e.g. from {@link dev.conjure.ai.A1111Provider#generateTexture})
+     * @param png        raw PNG bytes (e.g. from {@link dev.conjure.ai.ComfyUIProvider#generateTexture})
      * @param targetSize desired edge length in pixels (e.g. 16, 64, 128)
      * @return ARGB pixel grid indexed {@code [y][x]}, always exactly {@code targetSize} rows/cols
      * @throws IOException if the bytes cannot be decoded as a valid PNG

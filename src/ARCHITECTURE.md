@@ -124,18 +124,21 @@ rather than crashing the game.
 
 ---
 
-## 5. Generation: the agent team
+## 5. Generation: routing + the agent team
 
-`gen/GenerationService` is the **orchestrator**. A command hands it a prompt; it runs three
-specialized sub-agents sequentially on a background thread (model calls block for seconds and
-must never touch the main thread):
+`gen/GenerationService` is the per-piece **orchestrator**. Given one piece prompt it first asks
+`ai/agents/RouterAgent` to classify it into a `SlotKind`, then runs the matching
+`gen/pipeline/*Pipeline` (ITEM/BLOCK/FLUID/ENTITY/STRUCTURE) on a single background thread (model
+calls block for seconds and must never touch the main thread). A pipeline allocates a slot and
+runs the specialized sub-agents:
 
 ```
-/conjure new "<prompt>"
+one piece prompt
         │
         ▼
-GenerationService (worker thread)
-   ├─ TextureAgent ─► 16×16 pixel-art JSON ─► PNG ─► DynamicPackManager
+GenerationService (conjure-gen worker thread)
+   ├─ RouterAgent  ─► SlotKind ─► pick the matching pipeline
+   ├─ TextureAgent ─► ComfyUI PNG (primary) or LLM pixel-art JSON (fallback) ─► DynamicPackManager
    ├─ DataAgent    ─► displayName + description
    ├─ LogicAgent   ─► behavior JS (ctx API) ─► scripts/<id>.js
    ├─ assemble SlotDefinition ─► SlotRegistry.put
@@ -143,13 +146,40 @@ GenerationService (worker thread)
    └─ ClientHooks.reloadResources()  (client dist only)
         │
         ▼  back on the server thread
-   player sees: "Conjured '<name>' → item slot #N"
+   player sees: "Conjured '<name>' → <kind> slot #N"
 ```
 
 Each agent is just a `TextModelProvider` call with a focused system prompt. The provider is
 chosen by config (`ai/ProviderFactory` → Ollama local **or** Anthropic cloud), so the same
 pipeline runs locally or in the cloud unchanged. `ai/agents/JsonHelper` strips fences/prose to
 the outermost `{...}` and does one repair-retry on malformed JSON.
+
+`TextureAgent`'s primary path is the **ComfyUI** image backend (`ai/ComfyUIProvider`): it POSTs a
+txt2img workflow graph, polls `/history`, and downloads the rendered PNG, which
+`gen/PixelTexture#fromPng` nearest-neighbour downscales to the texture size. ComfyUI (rather than
+A1111) is the default because it ships portable/headless and is driven entirely through its
+workflow API — friendlier to distribute. If no ComfyUI server is reachable, generation falls back
+to asking the text model for a 16×16 pixel-art grid, so it never hard-depends on an image server.
+
+### 5a. Whole-mod / multi-piece generation
+
+A user rarely wants exactly one slot. `ai/agents/ModPlannerAgent` decomposes a request into a
+list of concrete single-piece prompts; `gen/ModService` runs the planner on its own
+`conjure-mod-planner` daemon thread, then fans each piece onto `GenerationService.generate` (the
+single-thread gen pool serializes them). Two modes share the planner:
+
+- **AUTO** (`/conjure new`): if the request is one concrete thing ("a glowing ember dagger") it
+  returns a single piece; if it's a theme/set/plural ("pagoda blocks") it expands generously,
+  erring toward *more* pieces than strictly necessary (up to 20).
+- **EXPANSIVE** (`/conjure mod`): always decomposes a whole-mod concept into many mixed-kind
+  pieces.
+
+### 5b. Command surface
+
+`command/ConjureCommands` registers: `new <prompt>` (smart generate — one piece or many),
+`mod <description>` (always-expansive whole-mod), `list` (configured item slots),
+`edit <index> <prompt>` (regenerate one item slot, preserving its registry id), and
+`place <index>` (build a generated structure near the player).
 
 ---
 

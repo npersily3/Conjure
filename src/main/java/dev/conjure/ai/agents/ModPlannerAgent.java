@@ -33,9 +33,13 @@ import java.util.SequencedCollection;
 public final class ModPlannerAgent {
 
     /** Maximum number of pieces to generate — respects pool sizes and keeps plans actionable. */
-    static final int MAX_PIECES = 15;
+    static final int MAX_PIECES = 20;
 
-    private static final String SYSTEM = """
+    /**
+     * EXPANSIVE mode (used by {@code /conjure mod}): always decompose a whole-mod concept into many
+     * pieces, erring toward more rather than fewer.
+     */
+    private static final String SYSTEM_EXPANSIVE = """
             You are a planner for a Minecraft content generator called Conjure.
             Given a high-level mod concept, decompose it into the individual content pieces
             that the mod needs — items, blocks, fluids, entities (mobs), and/or structures.
@@ -44,10 +48,35 @@ public final class ModPlannerAgent {
             "honey fluid", "an apiary workstation block").
             Rules:
             - Reply with ONLY a JSON object — no prose, no markdown fences.
-            - Produce between 3 and 15 pieces (aim for the number that makes the mod feel
-              complete, not padded).
+            - Produce between 5 and 20 pieces. Err on the side of MORE pieces than strictly
+              necessary — a generous, content-rich mod is better than a sparse one.
             - Keep each piece prompt concise (3–8 words) and unambiguous.
             - Cover a mix of content types when the concept warrants it.
+            - Never repeat the same concept twice.
+            Schema:
+            {
+              "pieces": ["<prompt>", "<prompt>", ...]
+            }
+            """;
+
+    /**
+     * AUTO mode (used by {@code /conjure new}): decide whether the request is a single concrete
+     * piece or a theme/set, and expand generously only when it is plural/thematic.
+     */
+    private static final String SYSTEM_AUTO = """
+            You are a planner for a Minecraft content generator called Conjure.
+            Given a content request, decide whether it describes ONE concrete piece or a
+            THEME / SET / collection, then output the pieces to generate.
+            Each piece must be a short, concrete, self-contained prompt for exactly ONE
+            Minecraft content piece — an item, block, fluid, entity (mob), or structure.
+            Rules:
+            - Reply with ONLY a JSON object — no prose, no markdown fences.
+            - If the request is clearly ONE concrete thing (e.g. "a glowing ember dagger"),
+              return EXACTLY ONE piece: the request itself.
+            - If the request implies multiple pieces — a theme, a set, a "mod", or plural nouns
+              like "pagoda blocks" or "dwarven weapons" — decompose it into many pieces and
+              err on the side of MORE pieces than strictly necessary (up to 20).
+            - Keep each piece prompt concise (3–8 words) and unambiguous.
             - Never repeat the same concept twice.
             Schema:
             {
@@ -65,10 +94,27 @@ public final class ModPlannerAgent {
      *                   repair retry performed by {@link JsonHelper#extractAndParse}
      */
     public List<String> plan(String modDescription) throws Exception {
+        return plan(modDescription, true);
+    }
+
+    /**
+     * Asks the text model to decompose {@code description} into concrete content prompts.
+     *
+     * @param description the content request
+     * @param expansive   {@code true} for whole-mod planning (always many pieces, used by
+     *                    {@code /conjure mod}); {@code false} for smart auto mode (single concrete
+     *                    prompts stay one piece, themed/plural prompts expand — used by
+     *                    {@code /conjure new})
+     * @return a non-null, non-empty list of single-piece generation prompts, capped at
+     *         {@value #MAX_PIECES} entries and de-duplicated
+     * @throws Exception if the model call or JSON parse fails on both attempts
+     */
+    public List<String> plan(String description, boolean expansive) throws Exception {
         TextModelProvider provider = ProviderFactory.text();
-        String userMsg = "Decompose this Minecraft mod concept into its content pieces: " + modDescription;
-        String raw = provider.complete(SYSTEM, userMsg);
-        JsonObject obj = JsonHelper.extractAndParse(raw, SYSTEM, provider, userMsg);
+        String system = expansive ? SYSTEM_EXPANSIVE : SYSTEM_AUTO;
+        String userMsg = "Decompose this Minecraft content request into its content pieces: " + description;
+        String raw = provider.complete(system, userMsg);
+        JsonObject obj = JsonHelper.extractAndParse(raw, system, provider, userMsg);
 
         List<String> pieces = new ArrayList<>();
         if (obj.has("pieces") && obj.get("pieces").isJsonArray()) {
@@ -89,7 +135,7 @@ public final class ModPlannerAgent {
 
         if (pieces.isEmpty()) {
             // Graceful fallback: treat the whole description as a single piece rather than failing.
-            pieces.add(modDescription);
+            pieces.add(description);
         }
 
         return pieces;

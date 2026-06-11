@@ -47,16 +47,16 @@ public final class Config {
         b.pop();
 
         b.comment("Texture / model image generation (local open-source backend by default)").push("image");
-        IMAGE_MODE = b.comment("LOCAL (A1111/Forge REST) or ANTHROPIC (falls back to LLM pixel-art)")
+        IMAGE_MODE = b.comment("LOCAL (ComfyUI) or ANTHROPIC (falls back to LLM pixel-art)")
                 .defineEnum("provider", ProviderMode.LOCAL);
-        LOCAL_IMAGE_ENDPOINT = b.comment("A1111/Forge web UI launched with --api, e.g. http://127.0.0.1:7860")
-                .define("localEndpoint", "http://127.0.0.1:7860");
-        IMAGE_QUALITY = b.comment("FAST (turbo model, small, ~seconds) or HIGH (e.g. FLUX, larger, slow)")
+        LOCAL_IMAGE_ENDPOINT = b.comment("ComfyUI server, e.g. http://127.0.0.1:8188")
+                .define("localEndpoint", "http://127.0.0.1:8188");
+        IMAGE_QUALITY = b.comment("FAST (fewer steps, 512px, ~seconds) or HIGH (more steps, 768px, slower)")
                 .defineEnum("quality", ImageQuality.FAST);
-        IMAGE_FAST_MODEL = b.comment("Checkpoint name for FAST mode; blank = whatever A1111 has loaded")
-                .define("fastModel", "");
-        IMAGE_HIGH_MODEL = b.comment("Checkpoint name for HIGH mode; blank = whatever A1111 has loaded")
-                .define("highModel", "");
+        IMAGE_FAST_MODEL = b.comment("ComfyUI checkpoint filename for FAST mode (must exist in ComfyUI/models/checkpoints)")
+                .define("fastModel", "v1-5-pruned-emaonly.safetensors");
+        IMAGE_HIGH_MODEL = b.comment("ComfyUI checkpoint filename for HIGH mode (must exist in ComfyUI/models/checkpoints)")
+                .define("highModel", "v1-5-pruned-emaonly.safetensors");
         IMAGE_FAST_SIZE = b.comment("Generated texture edge length (px) in FAST mode")
                 .defineInRange("fastSize", 64, 16, 512);
         IMAGE_HIGH_SIZE = b.comment("Generated texture edge length (px) in HIGH mode")
