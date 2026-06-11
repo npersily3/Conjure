@@ -1,45 +1,33 @@
 package dev.conjure.gen;
 
 import dev.conjure.Conjure;
-import dev.conjure.ai.ProviderFactory;
-import dev.conjure.ai.agents.DataAgent;
-import dev.conjure.ai.agents.LogicAgent;
 import dev.conjure.ai.agents.RouterAgent;
-import dev.conjure.ai.agents.TextureAgent;
-import dev.conjure.client.ClientHooks;
-import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
-import dev.conjure.content.SlotRegistry;
-import dev.conjure.persist.SlotStore;
-import dev.conjure.content.block.BlockArchetype;
+import dev.conjure.gen.pipeline.BlockPipeline;
+import dev.conjure.gen.pipeline.EntityPipeline;
+import dev.conjure.gen.pipeline.FluidPipeline;
+import dev.conjure.gen.pipeline.GenerationPipeline;
+import dev.conjure.gen.pipeline.ItemPipeline;
+import dev.conjure.gen.pipeline.PipelineSupport;
+import dev.conjure.gen.pipeline.StructurePipeline;
 import dev.conjure.registry.ConjureItems;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.fml.loading.FMLPaths;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /**
- * Orchestrator that fans out to the three specialized sub-agents:
- * <ol>
- *   <li>{@link TextureAgent} — produces the 16×16 pixel-art PNG</li>
- *   <li>{@link DataAgent}    — produces the display name and flavour description</li>
- *   <li>{@link LogicAgent}   — produces the JS right-click behavior script</li>
- * </ol>
+ * Generation dispatcher behind {@code /conjure new <prompt>}.
  *
- * <p>Agents run sequentially on a single background thread so the main game thread is never
- * blocked. When all three succeed the orchestrator writes assets to disk, updates the
- * {@link SlotRegistry}, persists the {@link SlotDefinition}, and triggers a client-side
- * resource-pack reload (singleplayer only — the integrated server and client share the JVM).
+ * <p>A {@link RouterAgent} classifies the prompt into a {@link SlotKind}; the matching
+ * {@link GenerationPipeline} (registered in {@link #PIPELINES}) then allocates a slot, runs its
+ * agents, writes assets, persists, and reloads. Adding a content kind = implement a new pipeline
+ * and register it here — existing pipelines are untouched.
  *
- * <p>{@link #generate(String, Consumer)} is the single entry point: a {@link RouterAgent} picks
- * ITEM vs BLOCK and the matching pipeline runs. {@link #regenerateItem(int, String, Consumer)}
- * re-runs the item pipeline on an existing slot (preserving its registry id so existing item
- * stacks continue to work).
+ * <p>All work runs on a single background thread so the game thread is never blocked; callers post
+ * {@code feedback} back to the server thread themselves.
  */
 public final class GenerationService {
 
@@ -49,19 +37,32 @@ public final class GenerationService {
         return t;
     });
 
+    /** The item pipeline is also reused directly by {@link #regenerateItem}. */
+    private static final ItemPipeline ITEM_PIPELINE = new ItemPipeline();
+
+    /**
+     * Kind → pipeline. ITEM and BLOCK ship today; FLUID / ENTITY / STRUCTURE are added here as
+     * their pipelines land (the dispatcher reports a clear message for any unmapped kind).
+     */
+    private static final Map<SlotKind, GenerationPipeline> PIPELINES = new EnumMap<>(SlotKind.class);
+
+    static {
+        PIPELINES.put(SlotKind.ITEM, ITEM_PIPELINE);
+        PIPELINES.put(SlotKind.BLOCK, new BlockPipeline());
+        PIPELINES.put(SlotKind.FLUID, new FluidPipeline());
+        PIPELINES.put(SlotKind.STRUCTURE, new StructurePipeline());
+        PIPELINES.put(SlotKind.ENTITY, new EntityPipeline());
+    }
+
     // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
 
     /**
-     * Single entry point behind {@code /conjure new <prompt>}. A {@link RouterAgent} first decides
-     * whether the prompt should become an ITEM or a BLOCK, then the matching pipeline allocates a
-     * free slot and runs. This is the "model picks the path" routing: extend the switch as new
-     * generation pipelines (fluids, entities) come online.
+     * Single entry point: route {@code prompt} to a content kind and run that pipeline.
      *
      * @param prompt   user-supplied description
-     * @param feedback callback for progress and result messages (called on the generation thread;
-     *                 callers must post to the server thread if needed)
+     * @param feedback progress + result callback (invoked on the generation thread)
      */
     public static void generate(String prompt, Consumer<String> feedback) {
         POOL.submit(() -> {
@@ -69,43 +70,23 @@ public final class GenerationService {
                 feedback.accept("§7[Conjure] Deciding what to build…");
                 SlotKind kind = new RouterAgent().classify(prompt);
 
-                switch (kind) {
-                    case BLOCK -> {
-                        // SOLID is the first archetype bucket (slots 0 .. SOLID.count-1); restricting
-                        // to it guarantees an opaque block that renders with the cube_all model.
-                        int slot = SlotRegistry.firstFree(SlotKind.BLOCK, BlockArchetype.SOLID.count);
-                        if (slot < 0) {
-                            feedback.accept("All " + BlockArchetype.SOLID.count + " solid block slots are full.");
-                            return;
-                        }
-                        feedback.accept("§7[Conjure] Interpreting this as a block.");
-                        runBlockPipeline(slot, prompt, feedback);
-                    }
-                    default -> { // ITEM (also the router's ambiguity fallback)
-                        int slot = SlotRegistry.firstFree(SlotKind.ITEM, ConjureItems.ITEM_POOL);
-                        if (slot < 0) {
-                            feedback.accept("All " + ConjureItems.ITEM_POOL + " item slots are full.");
-                            return;
-                        }
-                        feedback.accept("§7[Conjure] Interpreting this as an item.");
-                        runPipeline(slot, prompt, feedback);
-                    }
+                GenerationPipeline pipeline = PIPELINES.get(kind);
+                if (pipeline == null) {
+                    feedback.accept("§7[Conjure] " + kind + " generation isn't available yet.");
+                    return;
                 }
+                feedback.accept("§7[Conjure] Interpreting this as a " + kind.name().toLowerCase() + ".");
+                pipeline.run(prompt, feedback);
             } catch (Exception e) {
                 Conjure.LOGGER.error("Conjure generation failed", e);
-                feedback.accept("Generation failed: " + describe(e));
+                feedback.accept("Generation failed: " + PipelineSupport.describe(e));
             }
         });
     }
 
     /**
-     * Re-runs the full generation pipeline for an existing item slot, updating its texture,
-     * name, behavior, and persisted metadata while preserving the slot index (so existing
-     * item stacks remain valid).
-     *
-     * @param slotIndex the index of the existing slot to regenerate (0-based)
-     * @param prompt    new description prompt
-     * @param feedback  progress callback
+     * Re-runs the item pipeline for an existing item slot, preserving its index so existing item
+     * stacks remain valid.
      */
     public static void regenerateItem(int slotIndex, String prompt, Consumer<String> feedback) {
         POOL.submit(() -> {
@@ -115,129 +96,12 @@ public final class GenerationService {
                             + " (pool size: " + ConjureItems.ITEM_POOL + ").");
                     return;
                 }
-                runPipeline(slotIndex, prompt, feedback);
+                ITEM_PIPELINE.runForSlot(slotIndex, prompt, feedback);
             } catch (Exception e) {
                 Conjure.LOGGER.error("Conjure regeneration failed for slot {}", slotIndex, e);
-                feedback.accept("Regeneration failed: " + describe(e));
+                feedback.accept("Regeneration failed: " + PipelineSupport.describe(e));
             }
         });
-    }
-
-    // -------------------------------------------------------------------------
-    // Internals
-    // -------------------------------------------------------------------------
-
-    /**
-     * Runs all three sub-agents sequentially, assembles the {@link SlotDefinition}, writes
-     * assets to disk, persists metadata, and triggers resource reload.
-     */
-    private static void runPipeline(int slot, String prompt, Consumer<String> feedback) throws Exception {
-        String providerId = ProviderFactory.text().id();
-        Conjure.LOGGER.info("Conjure: generating item slot {} via {} for prompt: {}",
-                slot, providerId, prompt);
-
-        // --- Texture ---------------------------------------------------------
-        feedback.accept("§7[Conjure] Generating texture…");
-        int[][] argb = new TextureAgent().generate(prompt);
-        DynamicPackManager.writeItemTexture(slot, argb);
-        DynamicPackManager.writeItemModel(slot);
-
-        // --- Data (name + description) ---------------------------------------
-        feedback.accept("§7[Conjure] Generating name…");
-        DataAgent.Result data = new DataAgent().generate(prompt);
-
-        // --- Logic (JS behavior script) --------------------------------------
-        feedback.accept("§7[Conjure] Generating behavior script…");
-        String scriptId = "item_" + slot;
-        String scriptSource = new LogicAgent().generate(prompt);
-        writeScript(scriptId, scriptSource);
-
-        // --- Assemble SlotDefinition -----------------------------------------
-        SlotDefinition def = new SlotDefinition(SlotKind.ITEM, slot);
-        def.displayName      = data.displayName();
-        def.sourcePrompt     = prompt;
-        def.texturePath      = "conjure:item/item_slot_" + slot;
-        def.behaviorScriptId = scriptId;
-        def.strings.put("description", data.description());
-
-        SlotRegistry.put(def);
-
-        // --- Persist metadata ------------------------------------------------
-        SlotStore.save(def);
-
-        // --- Client-side reload ----------------------------------------------
-        if (FMLEnvironment.dist == Dist.CLIENT) {
-            ClientHooks.reloadResources();
-        }
-
-        feedback.accept("Conjured '" + data.displayName() + "' → item slot #" + slot
-                + ". Try: /give @s conjure:item_slot_" + slot);
-    }
-
-    /**
-     * Block generation pipeline: texture → name, then writes the four block assets (texture,
-     * block model, blockstate, block-item model), fills the BLOCK {@link SlotDefinition},
-     * persists it, and triggers a client reload. No behavior script (texture + placeable scope).
-     */
-    private static void runBlockPipeline(int slot, String prompt, Consumer<String> feedback) throws Exception {
-        String providerId = ProviderFactory.text().id();
-        Conjure.LOGGER.info("Conjure: generating block slot {} via {} for prompt: {}",
-                slot, providerId, prompt);
-
-        // --- Texture + block assets -----------------------------------------
-        feedback.accept("§7[Conjure] Generating texture…");
-        int[][] argb = new TextureAgent().generate(prompt);
-        DynamicPackManager.writeBlockTexture(slot, argb);
-        DynamicPackManager.writeBlockModel(slot);
-        DynamicPackManager.writeBlockState(slot);
-        DynamicPackManager.writeBlockItemModel(slot);
-
-        // --- Data (name + description) --------------------------------------
-        feedback.accept("§7[Conjure] Generating name…");
-        DataAgent.Result data = new DataAgent().generate(prompt);
-
-        // --- Assemble SlotDefinition ----------------------------------------
-        SlotDefinition def = new SlotDefinition(SlotKind.BLOCK, slot);
-        def.displayName      = data.displayName();
-        def.sourcePrompt     = prompt;
-        def.texturePath      = "conjure:block/block_slot_" + slot;
-        def.behaviorScriptId = ""; // texture + placeable: no right-click behavior
-        def.strings.put("description", data.description());
-
-        SlotRegistry.put(def);
-        SlotStore.save(def);
-
-        if (FMLEnvironment.dist == Dist.CLIENT) {
-            ClientHooks.reloadResources();
-        }
-
-        feedback.accept("Conjured '" + data.displayName() + "' → block slot #" + slot
-                + ". Try: /give @s conjure:block_slot_" + slot);
-    }
-
-    /** Writes the behavior script to {@code <gamedir>/conjure/generated/scripts/<id>.js}. */
-    private static void writeScript(String scriptId, String source) throws Exception {
-        Path dir = FMLPaths.GAMEDIR.get()
-                .resolve("conjure")
-                .resolve("generated")
-                .resolve("scripts");
-        Files.createDirectories(dir);
-        Files.writeString(dir.resolve(scriptId + ".js"), source);
-    }
-
-    /**
-     * Renders an exception as a human-readable, never-null message for the in-game feedback line.
-     * Falls back to the (possibly wrapped) cause's message, then the exception type, so a
-     * message-less throwable (e.g. a bare {@link java.net.ConnectException}) never surfaces as "null".
-     */
-    private static String describe(Throwable e) {
-        String msg = e.getMessage();
-        if (msg != null && !msg.isBlank()) return msg;
-        Throwable cause = e.getCause();
-        if (cause != null && cause.getMessage() != null && !cause.getMessage().isBlank()) {
-            return e.getClass().getSimpleName() + ": " + cause.getMessage();
-        }
-        return e.getClass().getSimpleName();
     }
 
     private GenerationService() {}

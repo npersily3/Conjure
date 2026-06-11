@@ -71,11 +71,22 @@ public final class DynamicPackManager {
         write("assets/conjure/models/item/block_slot_" + slot + ".json", json);
     }
 
+    // -------------------------------------------------------------------------
+    // Shared low-level writers — used by per-kind asset writers (fluids, entities,
+    // structures) so those lanes never need to edit this file. Paths are relative to
+    // the pack root, e.g. "assets/conjure/textures/entity/entity_slot_3.png".
+    // -------------------------------------------------------------------------
+
     /** Writes text to a path under the pack root, creating parent directories as needed. */
-    private static void write(String relativePath, String content) throws IOException {
+    public static void write(String relativePath, String content) throws IOException {
         Path out = root().resolve(relativePath);
         Files.createDirectories(out.getParent());
         Files.writeString(out, content);
+    }
+
+    /** Encodes an ARGB grid to a PNG at a path under the pack root, creating parent dirs. */
+    public static void writePngAt(String relativePath, int[][] argb) throws IOException {
+        PixelTexture.writePng(argb, root().resolve(relativePath));
     }
 
     private DynamicPackManager() {}

@@ -6,12 +6,19 @@ import dev.conjure.Conjure;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
+import dev.conjure.content.structure.StructurePlacer;
 import dev.conjure.gen.GenerationService;
+import dev.conjure.gen.ModService;
+import dev.conjure.gen.pipeline.PipelineSupport;
 import dev.conjure.registry.ConjureItems;
+import dev.conjure.registry.ConjureStructures;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -116,7 +123,71 @@ public final class ConjureCommands {
                                                             server.execute(() -> source.sendSystemMessage(
                                                                     Component.literal("§a[Conjure] §f" + msg))));
                                                     return 1;
-                                                })))));
+                                                }))))
+
+                        // /conjure place <index> — place a pre-generated structure at the player's position
+                        .then(Commands.literal("place")
+                                .then(Commands.argument("index", IntegerArgumentType.integer(0, ConjureStructures.STRUCTURE_POOL - 1))
+                                        .executes(ctx -> {
+                                            int index = IntegerArgumentType.getInteger(ctx, "index");
+                                            CommandSourceStack source = ctx.getSource();
+
+                                            SlotDefinition def = SlotRegistry.get(SlotKind.STRUCTURE, index);
+                                            if (!def.configured) {
+                                                source.sendFailure(Component.literal(
+                                                        "§cStructure slot #" + index + " has not been generated yet."
+                                                        + " Use /conjure new <prompt> first."));
+                                                return 0;
+                                            }
+
+                                            ServerPlayer player;
+                                            try {
+                                                player = source.getPlayerOrException();
+                                            } catch (Exception e) {
+                                                source.sendFailure(Component.literal(
+                                                        "§c/conjure place must be run by a player."));
+                                                return 0;
+                                            }
+
+                                            ServerLevel level = source.getLevel();
+                                            // Place with the bottom-north-west corner one block north of the player
+                                            BlockPos origin = player.blockPosition().north(2);
+
+                                            try {
+                                                int placed = StructurePlacer.place(level, origin, def);
+                                                final String name = def.displayName;
+                                                source.sendSuccess(
+                                                        () -> Component.literal(
+                                                                "§a[Conjure] §fPlaced '" + name
+                                                                + "' (" + placed + " blocks) at "
+                                                                + origin.getX() + ", " + origin.getY() + ", " + origin.getZ()),
+                                                        false);
+                                                return placed;
+                                            } catch (Exception e) {
+                                                Conjure.LOGGER.error("Conjure: failed to place structure slot {}", index, e);
+                                                source.sendFailure(Component.literal(
+                                                        "§cPlacement failed: " + PipelineSupport.describe(e)));
+                                                return 0;
+                                            }
+                                        })))
+
+                        // /conjure mod <description> — decompose a whole-mod request into many generated pieces
+                        .then(Commands.literal("mod")
+                                .then(Commands.argument("description", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            String description = StringArgumentType.getString(ctx, "description");
+                                            CommandSourceStack source = ctx.getSource();
+                                            MinecraftServer server = source.getServer();
+
+                                            source.sendSuccess(
+                                                    () -> Component.literal("§7Planning mod \"" + description + "\"… (this may take a minute)"),
+                                                    false);
+
+                                            ModService.buildMod(description, msg ->
+                                                    server.execute(() -> source.sendSystemMessage(
+                                                            Component.literal("§a[Conjure] §f" + msg))));
+                                            return 1;
+                                        }))));
     }
 
     private ConjureCommands() {}
