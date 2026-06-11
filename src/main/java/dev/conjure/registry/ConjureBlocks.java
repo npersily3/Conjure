@@ -5,8 +5,8 @@ import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
 import dev.conjure.content.block.BlockArchetype;
 import dev.conjure.content.block.ConjureBlock;
+import dev.conjure.content.item.ConjureBlockItem;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -39,10 +39,12 @@ public final class ConjureBlocks {
                         () -> new ConjureBlock(a, slot, a.newProperties()));
                 BLOCK_SLOTS.add(blockHolder);
 
-                // Matching BlockItem (shares the slot id, lives in the ITEM registry).
+                // Matching ConjureBlockItem (shares the slot id, lives in the ITEM registry).
+                // ConjureBlockItem overrides getName() so the item shows the AI-generated display name.
+                final int blockSlot = slot;
                 ConjureItems.BLOCK_ITEMS.add(ConjureItems.ITEMS.register(
                         "block_slot_" + slot,
-                        () -> new BlockItem(blockHolder.get(), new Item.Properties())));
+                        () -> new ConjureBlockItem(blockHolder.get(), blockSlot, new Item.Properties())));
                 idx++;
             }
         }
