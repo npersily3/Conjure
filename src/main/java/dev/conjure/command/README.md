@@ -9,7 +9,7 @@ the game thread is never blocked; feedback messages are posted back to the serve
 
 | File | Purpose |
 |------|---------|
-| `ConjureCommands.java` | Registers five sub-commands: `new <prompt>` (smart generate — single piece or expand), `mod <description>` (whole-mod decomposition via `ModService`), `list` (show configured item slots), `edit <index> <prompt>` (regenerate an existing item slot), and `place <index>` (place a generated structure via `StructurePlacer`). |
+| `ConjureCommands.java` | Registers the `/conjure` sub-commands: `new`, `mod`, `list`, `edit`, `place`, `regenerate`, `delete`, and `nuke`. Includes a `parseKind` helper that maps `item`/`block`/`fluid`/`entity`/`structure` keywords to `SlotKind`. |
 
 ## Sub-command summary
 
@@ -20,3 +20,6 @@ the game thread is never blocked; feedback messages are posted back to the serve
 | `/conjure list` | reads `SlotRegistry` | Shows configured item slots only |
 | `/conjure edit <i> <prompt>` | `GenerationService.regenerateItem` | Preserves slot index so existing item stacks stay valid |
 | `/conjure place <i>` | `StructurePlacer.place` | Places structure at player position; slot must be configured |
+| `/conjure regenerate <kind> <i> <prompt>` | `GenerationService.regenerate` | Re-runs any kind's pipeline on an existing slot in place (`runForSlot`), preserving its id |
+| `/conjure delete <kind> <i>` | `SlotRegistry.reset` + `SlotStore.delete` | Clears one slot back to empty (placeholder); reloads client assets + datapacks |
+| `/conjure nuke` | `SlotRegistry.resetAll` + `SlotStore.deleteAll` | Wipes ALL generated content across every kind |

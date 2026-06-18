@@ -10,6 +10,7 @@ import dev.conjure.content.structure.StructurePlacer;
 import dev.conjure.gen.GenerationService;
 import dev.conjure.gen.ModService;
 import dev.conjure.gen.pipeline.PipelineSupport;
+import dev.conjure.persist.SlotStore;
 import dev.conjure.registry.ConjureItems;
 import dev.conjure.registry.ConjureStructures;
 import net.minecraft.commands.CommandSourceStack;
@@ -190,7 +191,102 @@ public final class ConjureCommands {
                                                     server.execute(() -> source.sendSystemMessage(
                                                             Component.literal("§a[Conjure] §f" + msg))));
                                             return 1;
-                                        }))));
+                                        })))
+
+                        // /conjure regenerate <kind> <index> <prompt> — re-run a specific slot in place
+                        .then(Commands.literal("regenerate")
+                                .then(Commands.argument("kind", StringArgumentType.word())
+                                        .then(Commands.argument("index", IntegerArgumentType.integer(0))
+                                                .then(Commands.argument("prompt", StringArgumentType.greedyString())
+                                                        .executes(ctx -> {
+                                                            String kindStr = StringArgumentType.getString(ctx, "kind");
+                                                            int index = IntegerArgumentType.getInteger(ctx, "index");
+                                                            String prompt = StringArgumentType.getString(ctx, "prompt");
+                                                            CommandSourceStack source = ctx.getSource();
+                                                            MinecraftServer server = source.getServer();
+
+                                                            SlotKind kind = parseKind(kindStr);
+                                                            if (kind == null) {
+                                                                source.sendFailure(Component.literal(
+                                                                        "§cUnknown kind '" + kindStr + "'. Use: item, block, fluid, entity, structure."));
+                                                                return 0;
+                                                            }
+                                                            SlotDefinition existing = SlotRegistry.get(kind, index);
+                                                            if (!existing.configured) {
+                                                                source.sendFailure(Component.literal(
+                                                                        "§c" + kind.name().toLowerCase() + " slot #" + index
+                                                                        + " is not configured yet. Use /conjure new <prompt> first."));
+                                                                return 0;
+                                                            }
+
+                                                            source.sendSuccess(() -> Component.literal(
+                                                                    "§7Regenerating " + kind.name().toLowerCase() + " #" + index
+                                                                    + " with \"" + prompt + "\"…"), false);
+                                                            GenerationService.regenerate(kind, index, prompt, msg ->
+                                                                    server.execute(() -> source.sendSystemMessage(
+                                                                            Component.literal("§a[Conjure] §f" + msg))));
+                                                            return 1;
+                                                        })))))
+
+                        // /conjure delete <kind> <index> — clear a single slot back to empty
+                        .then(Commands.literal("delete")
+                                .then(Commands.argument("kind", StringArgumentType.word())
+                                        .then(Commands.argument("index", IntegerArgumentType.integer(0))
+                                                .executes(ctx -> {
+                                                    String kindStr = StringArgumentType.getString(ctx, "kind");
+                                                    int index = IntegerArgumentType.getInteger(ctx, "index");
+                                                    CommandSourceStack source = ctx.getSource();
+
+                                                    SlotKind kind = parseKind(kindStr);
+                                                    if (kind == null) {
+                                                        source.sendFailure(Component.literal(
+                                                                "§cUnknown kind '" + kindStr + "'. Use: item, block, fluid, entity, structure."));
+                                                        return 0;
+                                                    }
+                                                    SlotDefinition existing = SlotRegistry.get(kind, index);
+                                                    if (!existing.configured) {
+                                                        source.sendFailure(Component.literal(
+                                                                "§c" + kind.name().toLowerCase() + " slot #" + index + " is already empty."));
+                                                        return 0;
+                                                    }
+
+                                                    final String name = existing.displayName;
+                                                    SlotRegistry.reset(kind, index);   // in-memory → placeholder
+                                                    SlotStore.delete(kind, index);     // persisted metadata
+                                                    // Leftover generated texture/model files are harmless once the slot is unconfigured.
+                                                    PipelineSupport.reloadIfClient();
+                                                    PipelineSupport.reloadData();
+
+                                                    source.sendSuccess(() -> Component.literal(
+                                                            "§a[Conjure] §fDeleted " + kind.name().toLowerCase() + " #" + index
+                                                            + " ('" + name + "'). The slot is empty again."), false);
+                                                    return 1;
+                                                }))))
+
+                        // /conjure nuke — wipe ALL generated content across every kind
+                        .then(Commands.literal("nuke")
+                                .executes(ctx -> {
+                                    CommandSourceStack source = ctx.getSource();
+                                    SlotRegistry.resetAll();
+                                    SlotStore.deleteAll();
+                                    PipelineSupport.reloadIfClient();
+                                    PipelineSupport.reloadData();
+                                    source.sendSuccess(() -> Component.literal(
+                                            "§c[Conjure] §fNuked all generated content. Every slot is empty again."), false);
+                                    return 1;
+                                })));
+    }
+
+    /** Maps a command keyword to a {@link SlotKind}, or {@code null} if unrecognised. */
+    private static SlotKind parseKind(String s) {
+        return switch (s.toLowerCase().trim()) {
+            case "item"      -> SlotKind.ITEM;
+            case "block"     -> SlotKind.BLOCK;
+            case "fluid"     -> SlotKind.FLUID;
+            case "entity", "mob" -> SlotKind.ENTITY;
+            case "structure" -> SlotKind.STRUCTURE;
+            default          -> null;
+        };
     }
 
     private ConjureCommands() {}

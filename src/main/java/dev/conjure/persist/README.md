@@ -12,5 +12,5 @@ Textures, models, and behavior scripts are already on disk (written by `DynamicP
 
 | File | Purpose |
 |------|---------|
-| `SlotStore.java` | Serialises a `SlotDefinition` to a per-slot JSON file and deserialises all slot files on startup. Handles all `SlotKind` values; the filename `<kind>_<n>.json` encodes both dimensions. |
+| `SlotStore.java` | Serialises a `SlotDefinition` to a per-slot JSON file and deserialises all slot files on startup. Handles all `SlotKind` values; the filename `<kind>_<n>.json` encodes both dimensions. Also `delete(kind, index)` / `deleteAll()` remove the persisted file(s) for `/conjure delete` and `/conjure nuke` (in-memory `SlotRegistry` is reset separately by the caller). |
 | `SlotStoreLoader.java` | `@EventBusSubscriber` that hooks `ServerStartingEvent` to call `SlotStore.loadAll()` before any world ticks or commands run. |

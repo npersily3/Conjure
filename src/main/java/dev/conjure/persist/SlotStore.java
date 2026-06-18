@@ -75,6 +75,51 @@ public final class SlotStore {
     }
 
     // -------------------------------------------------------------------------
+    // Delete
+    // -------------------------------------------------------------------------
+
+    /**
+     * Deletes the persisted JSON file for a single slot. No-op if the file does not exist.
+     * The in-memory {@link SlotRegistry} is NOT modified by this method — callers should call
+     * {@link dev.conjure.content.SlotRegistry#reset(dev.conjure.content.SlotKind, int)} separately.
+     *
+     * @param kind  the slot kind
+     * @param index the slot index
+     */
+    public static void delete(SlotKind kind, int index) {
+        Path file = slotFile(kind, index);
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            Conjure.LOGGER.error("Conjure SlotStore: failed to delete {} slot {} file", kind, index, e);
+        }
+    }
+
+    /**
+     * Deletes every {@code *.json} file under the slots root directory. No-op if the directory
+     * does not exist. The in-memory {@link SlotRegistry} is NOT modified — callers should call
+     * {@link dev.conjure.content.SlotRegistry#resetAll()} separately.
+     */
+    public static void deleteAll() {
+        Path slotsDir = slotsRoot();
+        if (!Files.exists(slotsDir)) {
+            return; // nothing persisted — fresh install
+        }
+        try (var stream = Files.list(slotsDir)) {
+            stream.filter(p -> p.getFileName().toString().endsWith(".json"))
+                  .forEach(p -> {
+                      try {
+                          Files.delete(p);
+                      } catch (IOException e) {
+                          Conjure.LOGGER.error("Conjure SlotStore: failed to delete {}", p, e);
+                      }
+                  });
+        } catch (IOException e) {
+            Conjure.LOGGER.error("Conjure SlotStore: failed to list slot store directory for deleteAll", e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Load
     // -------------------------------------------------------------------------
 

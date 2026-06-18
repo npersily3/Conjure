@@ -7,8 +7,10 @@ import dev.conjure.registry.ConjureBlockEntities;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.MenuProvider;
@@ -16,31 +18,37 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * The block entity powering every MACHINE-archetype ConjureBlock.
+ * The block entity powering every MACHINE-archetype ConjureBlock (a "workbench").
  *
- * <p>Holds 3 inventory slots: slot 0 = input, slot 1 = fuel (unused by default, reserved for
- * future recipes that need a fuel), slot 2 = output. When the backing {@link SlotDefinition}
- * carries a recipe ({@code recipe_input}, {@code recipe_output}, {@code recipe_ticks} strings/
- * numbers), it acts as a simple furnace-style processor: consumes one item from slot 0 every
- * {@code recipe_ticks} ticks and pushes one output item into slot 2.
+ * <p>The container is fixed-capacity but used dynamically: indices 0..{@value #MAX_INPUTS}-1 are
+ * ingredient input cells, index {@value #SLOT_FUEL} is fuel, index {@value #SLOT_OUTPUT} is output.
+ * The actual recipe is read live from the backing {@link SlotDefinition} via
+ * {@link WorkbenchRecipes#of}: it uses one input cell per ingredient (1–9), an optional fuel item,
+ * and produces {@code outputCount} of the output every {@code ticks} ticks once every ingredient
+ * (and fuel, if required) is present. The menu/screen lay out only the cells the recipe uses, so the
+ * GUI is dynamic and need not be a square grid.
  *
  * <p>Ticking is wired up by {@link ConjureBlock#getTicker}.
  */
 public class ConjureBlockEntity extends BlockEntity implements Container, MenuProvider {
 
-    /** Slot indices. */
-    public static final int SLOT_INPUT  = 0;
-    public static final int SLOT_FUEL   = 1;
-    public static final int SLOT_OUTPUT = 2;
-    public static final int CONTAINER_SIZE = 3;
+    /** Maximum ingredient cells (must match {@link MachineAgent}'s cap). */
+    public static final int MAX_INPUTS  = 9;
+    public static final int SLOT_FUEL   = MAX_INPUTS;      // index 9
+    public static final int SLOT_OUTPUT = MAX_INPUTS + 1;  // index 10
+    public static final int CONTAINER_SIZE = MAX_INPUTS + 2;
 
     // progress/max exposed to the menu via ContainerData
     public static final int DATA_PROGRESS = 0;
@@ -54,10 +62,6 @@ public class ConjureBlockEntity extends BlockEntity implements Container, MenuPr
     /** Cached recipe length in ticks (read from def on every tick; 0 = no recipe). */
     private int maxProgress = 0;
 
-    /**
-     * Syncs progress and max to the client side via the ContainerData protocol.
-     * ContainerData is accessed by index; index 0 = progress, 1 = maxProgress.
-     */
     private final ContainerData data = new ContainerData() {
         @Override
         public int get(int index) {
@@ -87,14 +91,39 @@ public class ConjureBlockEntity extends BlockEntity implements Container, MenuPr
     }
 
     // ------------------------------------------------------------------
+    // Recipe accessors (used by ConjureMenu for dynamic slot layout)
+    // ------------------------------------------------------------------
+
+    /** The live recipe for the block at this position, or {@code null} if none. */
+    @Nullable
+    public WorkbenchRecipe getRecipe() {
+        return WorkbenchRecipes.of(getDefinition());
+    }
+
+    /**
+     * The non-blank ingredient ids a recipe actually uses, capped at {@link #MAX_INPUTS}. Shared by
+     * the tick loop and the menu so input cell indices line up. A {@code null} recipe yields one
+     * generic cell so an unconfigured/legacy block still opens a usable 1-slot GUI.
+     */
+    public static List<String> activeInputs(@Nullable WorkbenchRecipe recipe) {
+        if (recipe == null) return List.of("");
+        List<String> out = new ArrayList<>();
+        for (String id : recipe.inputs()) {
+            if (id != null && !id.isBlank()) out.add(id);
+            if (out.size() >= MAX_INPUTS) break;
+        }
+        if (out.isEmpty()) out.add("");
+        return out;
+    }
+
+    // ------------------------------------------------------------------
     // MenuProvider
     // ------------------------------------------------------------------
 
     @Override
     public Component getDisplayName() {
         SlotDefinition def = getDefinition();
-        String name = def.configured ? def.displayName : "Machine";
-        return Component.literal(name);
+        return Component.literal(def.configured ? def.displayName : "Workbench");
     }
 
     @Nullable
@@ -180,91 +209,86 @@ public class ConjureBlockEntity extends BlockEntity implements Container, MenuPr
     }
 
     // ------------------------------------------------------------------
-    // Tick logic (furnace-style processing)
+    // Tick logic (workbench processing)
     // ------------------------------------------------------------------
 
     /**
-     * Server-side tick. Called by {@link ConjureBlock#getTicker} for MACHINE blocks.
-     * Reads the recipe from the slot's live {@link SlotDefinition} every tick so it
-     * reacts to hot-swapped generation results without a restart.
+     * Server-side tick. Called by {@link ConjureBlock#getTicker} for MACHINE blocks. Reads the
+     * recipe from the slot's live {@link SlotDefinition} every tick so it reacts to hot-swapped
+     * generation results without a restart.
      */
     public static void serverTick(Level level, BlockPos pos, BlockState state, ConjureBlockEntity be) {
         if (level.isClientSide) return;
 
-        SlotDefinition def = be.getDefinition();
-        if (!def.configured) return;
+        WorkbenchRecipe recipe = WorkbenchRecipes.of(be.getDefinition());
+        if (recipe == null) { be.idle(); return; }
 
-        String recipeInput  = def.str("recipe_input",  "");
-        String recipeOutput = def.str("recipe_output", "");
-        int    recipeTicks  = (int) def.num("recipe_ticks", 0);
+        List<String> reqs = activeInputs(recipe);
+        be.maxProgress = recipe.ticks();
 
-        if (recipeInput.isBlank() || recipeOutput.isBlank() || recipeTicks <= 0) {
-            // No recipe: reset progress so the bar doesn't show stale state.
-            if (be.progress != 0) { be.progress = 0; be.setChanged(); }
-            be.maxProgress = 0;
-            return;
+        // Every ingredient cell must hold its required item.
+        for (int i = 0; i < reqs.size(); i++) {
+            ItemStack stack = be.items.get(i);
+            if (stack.isEmpty() || !matches(stack, reqs.get(i))) { be.resetProgress(); return; }
         }
 
-        be.maxProgress = recipeTicks;
-
-        // Check input slot has the required item
-        ItemStack inputStack = be.items.get(SLOT_INPUT);
-        if (inputStack.isEmpty()) {
-            if (be.progress != 0) { be.progress = 0; be.setChanged(); }
-            return;
+        // Fuel gate.
+        if (recipe.requiresFuel()) {
+            ItemStack fuel = be.items.get(SLOT_FUEL);
+            if (fuel.isEmpty() || !matches(fuel, recipe.fuel())) { be.resetProgress(); return; }
         }
 
-        // Match by registry name
-        String inputId = net.minecraft.core.registries.BuiltInRegistries.ITEM
-                .getKey(inputStack.getItem()).toString();
-        if (!inputId.equals(recipeInput)) {
-            if (be.progress != 0) { be.progress = 0; be.setChanged(); }
-            return;
+        // Output room.
+        Item outItem = BuiltInRegistries.ITEM.get(ResourceLocation.parse(recipe.output()));
+        if (outItem == Items.AIR) { be.resetProgress(); return; }
+        int outCount = recipe.outputCount();
+        ItemStack outStack = be.items.get(SLOT_OUTPUT);
+        if (!outStack.isEmpty()) {
+            if (!outStack.is(outItem)) return;
+            if (outStack.getCount() + outCount > outStack.getMaxStackSize()) return;
         }
 
-        // Check output slot has room
-        ItemStack outputStack = be.items.get(SLOT_OUTPUT);
-        net.minecraft.world.item.Item outputItem = net.minecraft.core.registries.BuiltInRegistries.ITEM
-                .get(net.minecraft.resources.ResourceLocation.parse(recipeOutput));
-        if (outputItem == net.minecraft.world.item.Items.AIR) {
-            if (be.progress != 0) { be.progress = 0; be.setChanged(); }
-            return;
-        }
-
-        if (!outputStack.isEmpty()) {
-            if (!outputStack.is(outputItem)) return; // different item in output
-            if (outputStack.getCount() >= outputStack.getMaxStackSize()) return; // full
-        }
-
-        // Advance
+        // Advance and, on completion, consume one of each ingredient (+ fuel) and produce the output.
         be.progress++;
         be.setChanged();
-
-        if (be.progress >= recipeTicks) {
-            // Consume one input
-            inputStack.shrink(1);
-            if (inputStack.isEmpty()) be.items.set(SLOT_INPUT, ItemStack.EMPTY);
-
-            // Produce one output
-            if (outputStack.isEmpty()) {
-                be.items.set(SLOT_OUTPUT, new ItemStack(outputItem));
-            } else {
-                outputStack.grow(1);
+        if (be.progress >= recipe.ticks()) {
+            for (int i = 0; i < reqs.size(); i++) {
+                ItemStack s = be.items.get(i);
+                s.shrink(1);
+                if (s.isEmpty()) be.items.set(i, ItemStack.EMPTY);
             }
-
+            if (recipe.requiresFuel()) {
+                ItemStack f = be.items.get(SLOT_FUEL);
+                f.shrink(1);
+                if (f.isEmpty()) be.items.set(SLOT_FUEL, ItemStack.EMPTY);
+            }
+            if (outStack.isEmpty()) be.items.set(SLOT_OUTPUT, new ItemStack(outItem, outCount));
+            else outStack.grow(outCount);
             be.progress = 0;
             be.setChanged();
         }
+    }
+
+    private static boolean matches(ItemStack stack, String id) {
+        return BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().equals(id);
+    }
+
+    /** Stops processing but keeps the progress bar length (recipe present, ingredients missing). */
+    private void resetProgress() {
+        if (progress != 0) { progress = 0; setChanged(); }
+    }
+
+    /** No recipe at all: clear both progress and the bar length. */
+    private void idle() {
+        resetProgress();
+        maxProgress = 0;
     }
 
     // ------------------------------------------------------------------
     // Helper
     // ------------------------------------------------------------------
 
-    /**
-     * Looks up the SlotDefinition for the block currently at this position.
-     * The ConjureBlock keeps a slotIndex field; we resolve it via the block state.
-     */
+    /** The SlotDefinition for the block currently at this position (resolved via its slot index). */
     private SlotDefinition getDefinition() {
         if (level == null) return SlotRegistry.get(SlotKind.BLOCK, 0);
         BlockState bs = level.getBlockState(worldPosition);

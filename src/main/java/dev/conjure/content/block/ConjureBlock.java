@@ -137,12 +137,12 @@ public class ConjureBlock extends Block implements EntityBlock {
 
         String interaction = d.str("interaction", "");
 
-        if ("machine".equals(interaction)) {
+        if (WorkbenchRecipes.isWorkbench(d)) {
             // Client side: tell MC the interaction was consumed (arm swing).
             if (level.isClientSide) {
                 return InteractionResult.SUCCESS;
             }
-            // Server side: open the machine GUI.
+            // Server side: open the workbench GUI.
             if (player instanceof ServerPlayer sp) {
                 BlockEntity be = level.getBlockEntity(pos);
                 if (be instanceof ConjureBlockEntity cbe) {

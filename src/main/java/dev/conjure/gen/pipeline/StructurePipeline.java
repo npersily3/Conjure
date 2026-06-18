@@ -75,7 +75,15 @@ public final class StructurePipeline implements GenerationPipeline {
             feedback.accept("All " + ConjureStructures.STRUCTURE_POOL + " structure slots are full.");
             return;
         }
+        runForSlot(slot, prompt, feedback);
+    }
 
+    /**
+     * Runs the structure pipeline against a specific slot index. Used for new generation and for
+     * {@code /conjure regenerate structure <index>} (which preserves the slot id).
+     */
+    @Override
+    public void runForSlot(int slot, String prompt, Consumer<String> feedback) throws Exception {
         Conjure.LOGGER.info("Conjure: generating structure slot {} via {} for prompt: {}",
                 slot, ProviderFactory.text().id(), prompt);
 

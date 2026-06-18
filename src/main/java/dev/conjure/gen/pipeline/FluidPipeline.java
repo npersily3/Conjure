@@ -30,7 +30,16 @@ public final class FluidPipeline implements GenerationPipeline {
             feedback.accept("All " + ConjureFluids.FLUID_POOL + " fluid slots are full.");
             return;
         }
+        runForSlot(slot, prompt, feedback);
+    }
 
+    /**
+     * Runs the fluid pipeline against a specific slot index. Used for new generation and for
+     * {@code /conjure regenerate fluid <index>} (which preserves the slot id so existing fluid
+     * references stay valid).
+     */
+    @Override
+    public void runForSlot(int slot, String prompt, Consumer<String> feedback) throws Exception {
         Conjure.LOGGER.info("Conjure: generating fluid slot {} via {} for prompt: {}",
                 slot, ProviderFactory.text().id(), prompt);
 
@@ -41,6 +50,8 @@ public final class FluidPipeline implements GenerationPipeline {
 
         FluidAssets.writeStillTexture(slot, stillArgb);
         FluidAssets.writeFlowTexture(slot, flowArgb);
+        // Bucket icon + model are hardcoded from a formula (tinted to the fluid colour), not AI.
+        FluidAssets.writeBucketAssets(slot, stillArgb);
 
         feedback.accept("§7[Conjure] Generating fluid name…");
         DataAgent.Result data = new DataAgent().generate(prompt + " liquid");

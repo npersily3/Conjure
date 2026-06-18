@@ -13,4 +13,4 @@ and simply knows the correct relative path for its kind.
 | File | Purpose |
 |------|---------|
 | `EntityAssets.java` | Writes the per-slot skin PNG to `assets/conjure/textures/entity/entity_slot_N.png` in the dynamic pack. The geo model and animation JSON are static (bundled in the jar) and are never written here. |
-| `FluidAssets.java` | Writes still-frame and flowing-frame PNGs to `assets/conjure/textures/block/fluid_still_slot_N.png` and `fluid_flow_slot_N.png` so the block atlas stitcher picks them up. Both textures use the same ARGB data for v1 simplicity. |
+| `FluidAssets.java` | Writes still-frame and flowing-frame PNGs to `assets/conjure/textures/block/fluid_still_slot_N.png` and `fluid_flow_slot_N.png` so the block atlas stitcher picks them up (both use the same ARGB data for v1). Also writes a hardcoded bucket icon + item model (`writeBucketAssets`): a fixed pail mask rendered with metal-grey walls and an interior tinted to the fluid's dominant colour — no AI call. |

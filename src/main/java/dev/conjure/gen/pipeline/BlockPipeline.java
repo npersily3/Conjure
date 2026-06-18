@@ -13,6 +13,7 @@ import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
 import dev.conjure.content.block.BlockArchetype;
+import dev.conjure.content.block.WorkbenchRecipes;
 import dev.conjure.gen.DynamicPackManager;
 import dev.conjure.gen.RecipeTemplates;
 import dev.conjure.registry.ConjureSlabs;
@@ -81,7 +82,7 @@ public final class BlockPipeline implements GenerationPipeline {
 
         // --- Allocate the correct slot based on interaction kind ---
         final int slot;
-        if (machineResult.kind() == MachineAgent.Kind.MACHINE) {
+        if (machineResult.kind() == MachineAgent.Kind.WORKBENCH) {
             // Allocate from the MACHINE sub-range (MACHINE_OFFSET .. MACHINE_OFFSET + MACHINE.count)
             int freeInMachine = SlotRegistry.firstFree(SlotKind.BLOCK,
                     MACHINE_OFFSET + BlockArchetype.MACHINE.count);
@@ -125,12 +126,11 @@ public final class BlockPipeline implements GenerationPipeline {
         def.strings.put("description", data.description());
 
         switch (machineResult.kind()) {
-            case MACHINE -> {
+            case WORKBENCH -> {
                 def.behaviorScriptId = "";
-                def.strings.put("interaction",    "machine");
-                def.strings.put("recipe_input",   machineResult.recipeInput());
-                def.strings.put("recipe_output",  machineResult.recipeOutput());
-                def.numbers.put("recipe_ticks",   (double) machineResult.recipeTicks());
+                WorkbenchRecipes.write(def, machineResult.inputs().size(), machineResult.inputs(),
+                        machineResult.output(), machineResult.outputCount(),
+                        machineResult.fuel(), machineResult.ticks());
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");
@@ -156,13 +156,78 @@ public final class BlockPipeline implements GenerationPipeline {
         }
 
         String kindLabel = switch (machineResult.kind()) {
-            case MACHINE -> " [machine]";
-            case SCRIPT  -> " [scripted]";
-            default      -> "";
+            case WORKBENCH -> " [workbench]";
+            case SCRIPT    -> " [scripted]";
+            default        -> "";
         };
         feedback.accept("Conjured '" + data.displayName() + "'" + kindLabel
                 + " → block slot #" + slot
                 + ". Try: /give @s conjure:block_slot_" + slot);
+    }
+
+    /**
+     * Regenerates a single existing block slot in place (used by {@code /conjure regenerate block}).
+     * Unlike {@link #run}, this never expands into a material family and never re-allocates: it keeps
+     * the requested slot id so blocks already placed in the world keep working. The slot's archetype
+     * is fixed, so a workbench recipe is only produced when the slot lives in the MACHINE sub-range
+     * (the only range whose blocks carry a {@link dev.conjure.content.block.ConjureBlockEntity}).
+     */
+    @Override
+    public void runForSlot(int slot, String prompt, Consumer<String> feedback) throws Exception {
+        feedback.accept("§7[Conjure] Generating texture…");
+        int[][] argb = new TextureAgent().generate(prompt, TextureKind.BLOCK);
+
+        feedback.accept("§7[Conjure] Generating name…");
+        DataAgent.Result data = new DataAgent().generate(prompt);
+
+        boolean machineSlot = slot >= MACHINE_OFFSET
+                && slot < MACHINE_OFFSET + BlockArchetype.MACHINE.count;
+
+        MachineAgent.Result result = MachineAgent.Result.plain();
+        if (Config.INTERACTIVITY_ENABLED.get()) {
+            feedback.accept("§7[Conjure] Deciding interaction kind…");
+            result = new MachineAgent().generate(prompt);
+            // A non-machine slot has no block entity, so a workbench can't run there — fall back.
+            if (result.kind() == MachineAgent.Kind.WORKBENCH && !machineSlot) {
+                result = MachineAgent.Result.plain();
+            }
+        }
+
+        Conjure.LOGGER.info("Conjure: regenerating block slot {} ({}) via {} for prompt: {}",
+                slot, result.kind(), ProviderFactory.text().id(), prompt);
+
+        DynamicPackManager.writeBlockTexture(slot, argb);
+        DynamicPackManager.writeBlockModel(slot);
+        DynamicPackManager.writeBlockState(slot);
+        DynamicPackManager.writeBlockItemModel(slot);
+
+        SlotDefinition def = new SlotDefinition(SlotKind.BLOCK, slot);
+        def.displayName  = data.displayName();
+        def.sourcePrompt = prompt;
+        def.texturePath  = "conjure:block/block_slot_" + slot;
+        def.strings.put("description", data.description());
+
+        switch (result.kind()) {
+            case WORKBENCH -> {
+                def.behaviorScriptId = "";
+                WorkbenchRecipes.write(def, result.inputs().size(), result.inputs(),
+                        result.output(), result.outputCount(), result.fuel(), result.ticks());
+            }
+            case SCRIPT -> {
+                feedback.accept("§7[Conjure] Generating behavior script…");
+                String scriptId = "block_slot_" + slot;
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt));
+                def.behaviorScriptId = scriptId;
+                def.strings.put("interaction", "script");
+            }
+            default -> {
+                def.behaviorScriptId = "";
+                def.strings.put("interaction", "plain");
+            }
+        }
+
+        PipelineSupport.commit(def);
+        feedback.accept("Regenerated '" + data.displayName() + "' → block slot #" + slot + ".");
     }
 
     // -------------------------------------------------------------------------

@@ -39,5 +39,6 @@ assets/conjure/
 | `models/item/block_slot_N.json` | `DynamicPackManager.writeBlockItemModel` |
 | `textures/block/fluid_still_slot_N.png` | `FluidAssets.writeStillTexture` |
 | `textures/block/fluid_flow_slot_N.png` | `FluidAssets.writeFlowTexture` |
+| `textures/item/bucket_slot_N.png` + `models/item/bucket_slot_N.json` | `FluidAssets.writeBucketAssets` (hardcoded, tinted) |
 | `textures/entity/entity_slot_N.png` | `EntityAssets.writeSkinTexture` |
 | `scripts/<id>.js` | `PipelineSupport.writeScript` |

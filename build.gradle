@@ -18,6 +18,8 @@ repositories {
     mavenCentral()
     // GeckoLib (animated entity/block models)
     maven { url 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/' }
+    // JEI (recipe/ingredient viewer) + other BlameJared mods
+    maven { url 'https://maven.blamejared.com' }
 }
 
 neoForge {
@@ -78,6 +80,10 @@ dependencies {
     // loaded in dev runs; shipped users install it as a required dependency (declared in
     // neoforge.mods.toml). Used by the entity renderer for generated mobs.
     implementation 'software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.6'
+
+    // JEI is itself a NeoForge mod; the neoforge artifact bundles its API, so one implementation
+    // dep covers both compile (the @JeiPlugin) and dev runtime. Optional dependency for shipped users.
+    implementation 'mezz.jei:jei-1.21.1-neoforge:19.27.0.340'
 }
 
 // Expand mod metadata placeholders into neoforge.mods.toml at build time

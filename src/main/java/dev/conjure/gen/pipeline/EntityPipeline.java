@@ -40,7 +40,16 @@ public final class EntityPipeline implements GenerationPipeline {
                     + " entity slots are full. Use /conjure list to review existing mobs.");
             return;
         }
+        runForSlot(slot, prompt, feedback);
+    }
 
+    /**
+     * Runs the entity pipeline against a specific slot index. Used for new generation and for
+     * {@code /conjure regenerate entity <index>} (which preserves the slot id so existing entity
+     * references stay valid).
+     */
+    @Override
+    public void runForSlot(int slot, String prompt, Consumer<String> feedback) throws Exception {
         String providerId = ProviderFactory.text().id();
         dev.conjure.Conjure.LOGGER.info(
                 "Conjure: generating entity slot {} via {} for prompt: {}", slot, providerId, prompt);

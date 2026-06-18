@@ -10,7 +10,11 @@ import dev.conjure.gen.pipeline.GenerationPipeline;
 import dev.conjure.gen.pipeline.ItemPipeline;
 import dev.conjure.gen.pipeline.PipelineSupport;
 import dev.conjure.gen.pipeline.StructurePipeline;
+import dev.conjure.content.block.BlockArchetype;
+import dev.conjure.registry.ConjureEntities;
+import dev.conjure.registry.ConjureFluids;
 import dev.conjure.registry.ConjureItems;
+import dev.conjure.registry.ConjureStructures;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -102,6 +106,44 @@ public final class GenerationService {
                 feedback.accept("Regeneration failed: " + PipelineSupport.describe(e));
             }
         });
+    }
+
+    /**
+     * Re-runs the pipeline for {@code kind} against an existing slot, preserving its index so
+     * content already placed in the world stays valid. Backs {@code /conjure regenerate}.
+     */
+    public static void regenerate(SlotKind kind, int slotIndex, String prompt, Consumer<String> feedback) {
+        POOL.submit(() -> {
+            try {
+                GenerationPipeline pipeline = PIPELINES.get(kind);
+                if (pipeline == null) {
+                    feedback.accept("§7[Conjure] " + kind + " regeneration isn't available yet.");
+                    return;
+                }
+                int pool = poolSize(kind);
+                if (slotIndex < 0 || slotIndex >= pool) {
+                    feedback.accept("Invalid " + kind.name().toLowerCase() + " slot index "
+                            + slotIndex + " (pool size: " + pool + ").");
+                    return;
+                }
+                pipeline.runForSlot(slotIndex, prompt, feedback);
+            } catch (Exception e) {
+                Conjure.LOGGER.error("Conjure regeneration failed for {} slot {}", kind, slotIndex, e);
+                feedback.accept("Regeneration failed: " + PipelineSupport.describe(e));
+            }
+        });
+    }
+
+    /** Pre-registered pool size for a kind (used to bounds-check slot indices). */
+    public static int poolSize(SlotKind kind) {
+        return switch (kind) {
+            case ITEM      -> ConjureItems.ITEM_POOL;
+            case BLOCK     -> BlockArchetype.totalPool();
+            case FLUID     -> ConjureFluids.FLUID_POOL;
+            case ENTITY    -> ConjureEntities.totalPool();
+            case STRUCTURE -> ConjureStructures.STRUCTURE_POOL;
+            default        -> 0;
+        };
     }
 
     private GenerationService() {}

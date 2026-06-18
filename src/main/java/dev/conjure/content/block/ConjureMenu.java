@@ -2,6 +2,7 @@ package dev.conjure.content.block;
 
 import dev.conjure.registry.ConjureMenus;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -13,32 +14,32 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import javax.annotation.Nullable;
+import java.util.List;
 
 /**
- * Container menu for {@link ConjureBlockEntity}.
+ * Container menu for {@link ConjureBlockEntity}, laid out <em>dynamically</em> from the block's live
+ * {@link WorkbenchRecipe}: one input slot per ingredient (1–9, wrapped 3 per row), an optional fuel
+ * slot, and an output slot. The standard 3×9 inventory + hotbar sit below at the usual coordinates.
  *
- * <p>Layout (3 machine slots + standard 3×9 + hotbar):
- * <ul>
- *   <li>Slot 0 — input   (x=56, y=35)
- *   <li>Slot 1 — fuel    (x=56, y=53) — reserved, not displayed by default
- *   <li>Slot 2 — output  (x=116, y=35)
- *   <li>Slots 3–29 — player main inventory
- *   <li>Slots 30–38 — hotbar
- * </ul>
+ * <p>Both sides build the identical layout because both read the same recipe, so client and server
+ * agree on slot count without any extra sync packet.
  */
 public class ConjureMenu extends AbstractContainerMenu {
 
-    public static final int MACHINE_SLOTS = ConjureBlockEntity.CONTAINER_SIZE;
-    public static final int PLAYER_INV_START = MACHINE_SLOTS;
-    public static final int PLAYER_INV_END   = PLAYER_INV_START + 27;
-    public static final int HOTBAR_START     = PLAYER_INV_END;
-    public static final int HOTBAR_END       = HOTBAR_START + 9;
+    /** Top-left of the input grid and inter-cell spacing. */
+    private static final int INPUT_X = 44, INPUT_Y = 18, CELL = 18, PER_ROW = 3;
+    private static final int OUTPUT_X = 134, OUTPUT_Y = 35;
+    private static final int FUEL_X = 8, FUEL_Y = 35;
 
     private final ConjureBlockEntity blockEntity;
     private final ContainerData data;
     private final ContainerLevelAccess access;
 
-    /** Server-side constructor (opens a real block entity). */
+    /** Number of ingredient slots actually shown (= menu slot indices {@code 0..inputCount-1}). */
+    private final int inputCount;
+    /** Total workbench slots (inputs + optional fuel + output) before the player inventory. */
+    private final int wbSlotCount;
+
     public ConjureMenu(int containerId, Inventory playerInventory, BlockPos pos, @Nullable Level level) {
         super(ConjureMenus.MACHINE_MENU.get(), containerId);
 
@@ -57,30 +58,58 @@ public class ConjureMenu extends AbstractContainerMenu {
                 ? ContainerLevelAccess.create(level, pos)
                 : ContainerLevelAccess.NULL;
 
-        // Machine slots
-        this.addSlot(new Slot(blockEntity, ConjureBlockEntity.SLOT_INPUT,  56, 35));
-        this.addSlot(new Slot(blockEntity, ConjureBlockEntity.SLOT_FUEL,   56, 53));
-        this.addSlot(new Slot(blockEntity, ConjureBlockEntity.SLOT_OUTPUT, 116, 35) {
+        WorkbenchRecipe recipe = blockEntity.getRecipe();
+        List<String> inputs = ConjureBlockEntity.activeInputs(recipe);
+        this.inputCount = inputs.size();
+        boolean hasFuel = recipe != null && recipe.requiresFuel();
+
+        // Input cells (container indices 0..inputCount-1), restricted to their required item.
+        for (int i = 0; i < inputCount; i++) {
+            int col = i % PER_ROW, row = i / PER_ROW;
+            final String required = inputs.get(i);
+            this.addSlot(new Slot(blockEntity, i, INPUT_X + col * CELL, INPUT_Y + row * CELL) {
+                @Override
+                public boolean mayPlace(ItemStack stack) {
+                    return required.isBlank() || idOf(stack).equals(required);
+                }
+            });
+        }
+
+        // Optional fuel slot.
+        if (hasFuel) {
+            final String fuelId = recipe.fuel();
+            this.addSlot(new Slot(blockEntity, ConjureBlockEntity.SLOT_FUEL, FUEL_X, FUEL_Y) {
+                @Override
+                public boolean mayPlace(ItemStack stack) {
+                    return fuelId.isBlank() || idOf(stack).equals(fuelId);
+                }
+            });
+        }
+
+        // Output slot (take-only).
+        this.addSlot(new Slot(blockEntity, ConjureBlockEntity.SLOT_OUTPUT, OUTPUT_X, OUTPUT_Y) {
             @Override
-            public boolean mayPlace(ItemStack stack) { return false; } // output only
+            public boolean mayPlace(ItemStack stack) { return false; }
         });
+
+        this.wbSlotCount = inputCount + (hasFuel ? 1 : 0) + 1;
 
         // Player main inventory (rows 0–2)
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                this.addSlot(new Slot(playerInventory,
-                        col + row * 9 + 9,
-                        8 + col * 18,
-                        84 + row * 18));
+                this.addSlot(new Slot(playerInventory, col + row * 9 + 9, 8 + col * 18, 84 + row * 18));
             }
         }
-
         // Hotbar
         for (int col = 0; col < 9; col++) {
             this.addSlot(new Slot(playerInventory, col, 8 + col * 18, 142));
         }
 
         this.addDataSlots(data);
+    }
+
+    private static String idOf(ItemStack stack) {
+        return BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
     }
 
     // ------------------------------------------------------------------
@@ -101,33 +130,26 @@ public class ConjureMenu extends AbstractContainerMenu {
         if (slot.hasItem()) {
             ItemStack stack = slot.getItem();
             copy = stack.copy();
+            int invStart = wbSlotCount;
+            int invEnd   = wbSlotCount + 36;
 
-            if (index < MACHINE_SLOTS) {
-                // From machine → player inventory
-                if (!this.moveItemStackTo(stack, PLAYER_INV_START, HOTBAR_END, true)) {
-                    return ItemStack.EMPTY;
-                }
+            if (index < wbSlotCount) {
+                // From workbench → player inventory
+                if (!this.moveItemStackTo(stack, invStart, invEnd, true)) return ItemStack.EMPTY;
             } else {
-                // From player → machine input slot (slot 0)
-                if (!this.moveItemStackTo(stack, ConjureBlockEntity.SLOT_INPUT, ConjureBlockEntity.SLOT_INPUT + 1, false)) {
-                    return ItemStack.EMPTY;
-                }
+                // From player → workbench input cells (slots accept only their required item)
+                if (!this.moveItemStackTo(stack, 0, inputCount, false)) return ItemStack.EMPTY;
             }
 
-            if (stack.isEmpty()) {
-                slot.setByPlayer(ItemStack.EMPTY);
-            } else {
-                slot.setChanged();
-            }
+            if (stack.isEmpty()) slot.setByPlayer(ItemStack.EMPTY);
+            else slot.setChanged();
         }
         return copy;
     }
 
     @Override
     public boolean stillValid(Player player) {
-        return access.evaluate(
-                (level, pos) -> blockEntity.stillValid(player),
-                true);
+        return access.evaluate((level, pos) -> blockEntity.stillValid(player), true);
     }
 
     public ConjureBlockEntity getBlockEntity() { return blockEntity; }
