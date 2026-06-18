@@ -46,4 +46,31 @@ public final class SlotRegistry {
         }
         return -1;
     }
+
+    /**
+     * Reverts a single slot to a fresh, unconfigured definition. The slot's JVM registry id is
+     * untouched (it can never change); only its runtime identity is cleared, so it renders as a
+     * placeholder again. Used by {@code /conjure delete}.
+     */
+    public static void reset(SlotKind kind, int index) {
+        SLOTS.put(key(kind, index), new SlotDefinition(kind, index));
+    }
+
+    /**
+     * Clears every slot of every kind back to unconfigured. {@link #get} lazily recreates empty
+     * definitions on demand, so dropping the whole map is sufficient. Used by {@code /conjure
+     * nuclear}.
+     */
+    public static void resetAll() {
+        SLOTS.clear();
+    }
+
+    /** Counts how many slots of {@code kind} within {@code [0, poolSize)} are configured. */
+    public static int countConfigured(SlotKind kind, int poolSize) {
+        int n = 0;
+        for (int i = 0; i < poolSize; i++) {
+            if (get(kind, i).configured) n++;
+        }
+        return n;
+    }
 }

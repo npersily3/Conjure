@@ -22,4 +22,16 @@ public interface GenerationPipeline {
      * are logged and surfaced by the caller.
      */
     void run(String prompt, Consumer<String> feedback) throws Exception;
+
+    /**
+     * Re-runs the pipeline against a specific, already-allocated slot index instead of allocating
+     * a fresh one — preserving the slot's JVM registry id so existing item stacks / placed blocks
+     * stay valid. Used by {@code /conjure regenerate} (and {@code /conjure edit} for items).
+     *
+     * <p>Default throws {@link UnsupportedOperationException}; each concrete pipeline overrides it.
+     * This keeps the interface back-compatible so adding a pipeline never forces a regenerate impl.
+     */
+    default void runForSlot(int slot, String prompt, Consumer<String> feedback) throws Exception {
+        throw new UnsupportedOperationException("regenerate not supported for this pipeline");
+    }
 }
