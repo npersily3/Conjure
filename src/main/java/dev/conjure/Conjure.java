@@ -1,6 +1,7 @@
 package dev.conjure;
 
 import com.mojang.logging.LogUtils;
+import dev.conjure.bootstrap.BackendBootstrap;
 import dev.conjure.content.block.BlockArchetype;
 import dev.conjure.registry.ConjureBlockEntities;
 import dev.conjure.registry.ConjureBlocks;
@@ -14,6 +15,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import org.slf4j.Logger;
 
 /**
@@ -39,6 +41,10 @@ public final class Conjure {
         ConjureTabs.register(modBus);          // creative-inventory tab for generated content
 
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+
+        // First-launch AI-backend setup (Ollama + model, ComfyUI). Runs on its own daemon thread
+        // once config is loaded, so it never blocks startup. See dev.conjure.bootstrap.
+        modBus.addListener((FMLCommonSetupEvent event) -> BackendBootstrap.start());
 
         LOGGER.info(
                 "Conjure online — pools: {} items, {} blocks ({} archetypes), {} fluids, {} entities ({}S/{}M/{}L), {} structure slots",

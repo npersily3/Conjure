@@ -21,9 +21,14 @@ generation pipeline. You can even ask for a whole mod at once.
 ## Running it
 
 ### Prerequisites
+> On **Windows**, you can skip the manual setup below: the mod auto-installs Ollama + the text model
+> and ComfyUI + a checkpoint on first launch (~10–14 GB). See [`docs/SETUP.md`](docs/SETUP.md) for
+> details and the `features.autoInstallBackends` kill-switch. The steps below are what that automates
+> (and the manual path for macOS/Linux).
+
 - **JDK 21** (`java -version` → 21.x).
 - **Text model** (the brain — required). Default is **local Ollama**:
-  - `ollama list` should show a model. Default config expects `llama3.3:latest` (any chat model works).
+  - `ollama list` should show a model. Default config expects `gemma4:latest` (any chat model works).
   - Configure in `run/config/conjure-common.toml` → `[text] localModel`/`localEndpoint`
     (the file is created on first launch; default endpoint `http://127.0.0.1:11434`).
   - To use Anthropic instead: `[text] provider = "ANTHROPIC"` and export your key into the env var

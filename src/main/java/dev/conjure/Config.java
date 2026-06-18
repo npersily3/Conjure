@@ -32,6 +32,7 @@ public final class Config {
     // --- feature toggles (modularity) ---
     public static final ModConfigSpec.BooleanValue ENTITY_ANIMATIONS;
     public static final ModConfigSpec.BooleanValue INTERACTIVITY_ENABLED;
+    public static final ModConfigSpec.BooleanValue AUTO_INSTALL_BACKENDS;
 
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -40,7 +41,7 @@ public final class Config {
         TEXT_MODE = b.comment("ANTHROPIC (cloud) or LOCAL (Ollama/LM Studio/llama.cpp)")
                  .defineEnum("provider", ProviderMode.LOCAL);
        LOCAL_TEXT_ENDPOINT = b.define("localEndpoint", "http://127.0.0.1:11434");
-        LOCAL_TEXT_MODEL = b.define("localModel", "llama3.3:latest");
+        LOCAL_TEXT_MODEL = b.define("localModel", "gemma4:latest");
         ANTHROPIC_MODEL = b.define("anthropicModel", "claude-sonnet-4-6");
         ANTHROPIC_KEY_ENV = b.comment("Name of the environment variable holding the API key")
                 .define("anthropicKeyEnv", "ANTHROPIC_API_KEY");
@@ -68,6 +69,11 @@ public final class Config {
                 .define("entityAnimations", true);
         INTERACTIVITY_ENABLED = b.comment("Allow generated blocks to be interactive (machines / scripted)")
                 .define("interactivity", true);
+        AUTO_INSTALL_BACKENDS = b.comment(
+                "On first launch, automatically download/install the AI backends this mod needs",
+                "(Ollama + the local text model, and ComfyUI + a checkpoint). Windows-only for now;",
+                "downloads land under <gamedir>/conjure/runtime/. Set false to manage them yourself.")
+                .define("autoInstallBackends", true);
         b.pop();
 
         SPEC = b.build();
