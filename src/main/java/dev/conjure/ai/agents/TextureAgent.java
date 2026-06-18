@@ -8,6 +8,7 @@ import dev.conjure.ai.ImageModelProvider;
 import dev.conjure.ai.ImageQuality;
 import dev.conjure.ai.ProviderFactory;
 import dev.conjure.ai.TextModelProvider;
+import dev.conjure.ai.TextureKind;
 import dev.conjure.gen.PixelTexture;
 
 /**
@@ -25,17 +26,33 @@ public final class TextureAgent {
     /** Edge length used by the LLM pixel-art fallback path. */
     private static final int FALLBACK_SIZE = 16;
 
-    private static final String SYSTEM = """
-            You design Minecraft item icons as 16x16 pixel art and respond with ONLY a JSON object,
-            no prose, no markdown fences. Schema:
+    private static final String SCHEMA = """
+            Respond with ONLY a JSON object, no prose, no markdown fences. Schema:
             {
               "palette": { "0": "#00000000", "1": "#RRGGBB", "2": "#RRGGBBAA", ... },
               "rows": ["................", ... exactly 16 strings of exactly 16 chars each]
             }
-            Each character in a row is a key into the palette. Use "0" mapped to "#00000000" for
-            transparent background pixels. Keep a clear, recognisable silhouette. Use at most 8
-            palette entries. Exactly 16 rows. Every row exactly 16 chars.
+            Each character in a row is a key into the palette. Use at most 8 palette entries.
+            Exactly 16 rows. Every row exactly 16 chars.
             """;
+
+    private static final String ITEM_SYSTEM =
+            "You design Minecraft item icons as 16x16 pixel art. Use \"0\" mapped to \"#00000000\" "
+            + "for transparent background pixels around a clear, recognisable centered silhouette.\n"
+            + SCHEMA;
+
+    /** Blocks are a full opaque surface, NOT a centered icon — fill every pixel, no transparency. */
+    private static final String BLOCK_SYSTEM =
+            "You design Minecraft block surface textures as 16x16 pixel art: a full, opaque surface "
+            + "(like stone, planks, or ore) that fills the WHOLE 16x16 grid edge to edge and tiles "
+            + "seamlessly when repeated. Do NOT leave a transparent background and do NOT draw a "
+            + "centered object — every one of the 256 pixels is part of the surface and must be "
+            + "opaque (no \"#00000000\").\n"
+            + SCHEMA;
+
+    private static String systemFor(TextureKind kind) {
+        return kind == TextureKind.BLOCK ? BLOCK_SYSTEM : ITEM_SYSTEM;
+    }
 
     /**
      * Generates a pixel-art texture for {@code prompt}.
@@ -48,7 +65,7 @@ public final class TextureAgent {
      * @return ARGB pixel grid, indexed [y][x]; size varies by quality tier (image path) or is
      *         always 16×16 (fallback path)
      */
-    public int[][] generate(String prompt) throws Exception {
+    public int[][] generate(String prompt, TextureKind kind) throws Exception {
         // Determine target size from config
         ImageQuality quality = Config.IMAGE_QUALITY.get();
         int targetSize = (quality == ImageQuality.HIGH)
@@ -59,7 +76,7 @@ public final class TextureAgent {
         try {
             ImageModelProvider imageProvider = ProviderFactory.image();
             if (imageProvider != null) {
-                byte[] pngBytes = imageProvider.generateTexture(prompt, targetSize);
+                byte[] pngBytes = imageProvider.generateTexture(prompt, targetSize, kind);
                 return PixelTexture.fromPng(pngBytes, targetSize);
             }
         } catch (Exception e) {
@@ -69,7 +86,7 @@ public final class TextureAgent {
         }
 
         // Fallback path: ask the text model to emit a pixel-art JSON grid
-        return llmFallback(prompt);
+        return llmFallback(prompt, kind);
     }
 
     // -------------------------------------------------------------------------
@@ -80,11 +97,14 @@ public final class TextureAgent {
      * Original LLM-based pixel-art path. Calls the text model and decodes the JSON
      * palette+rows response into a 16×16 ARGB grid.
      */
-    private static int[][] llmFallback(String prompt) throws Exception {
+    private static int[][] llmFallback(String prompt, TextureKind kind) throws Exception {
         TextModelProvider provider = ProviderFactory.text();
-        String raw = provider.complete(SYSTEM, "Design a pixel-art Minecraft item icon for: " + prompt);
-        JsonObject obj = JsonHelper.extractAndParse(raw, SYSTEM, provider,
-                "Design a pixel-art Minecraft item icon for: " + prompt);
+        String system = systemFor(kind);
+        String user = (kind == TextureKind.BLOCK)
+                ? "Design a tileable 16x16 Minecraft block surface texture for: " + prompt
+                : "Design a pixel-art Minecraft item icon for: " + prompt;
+        String raw = provider.complete(system, user);
+        JsonObject obj = JsonHelper.extractAndParse(raw, system, provider, user);
         return decode(obj);
     }
 

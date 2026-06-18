@@ -13,9 +13,9 @@ no edits to existing pipelines are needed.
 | File | Purpose |
 |------|---------|
 | `GenerationPipeline.java` | Interface: a single `run(prompt, feedback)` method. Implementations allocate a slot, call agents, write assets, commit, and report progress via `feedback`. |
-| `PipelineSupport.java` | Shared helpers used by all pipelines: `commit(def)` (registry swap + persist + client reload), `writeScript(id, source)` (saves a `.js` behavior file), and `describe(e)` (formats exceptions for in-game feedback). |
+| `PipelineSupport.java` | Shared helpers: `commit(def)` (registry swap + persist + client reload), `commitQuiet(def)` (no reload — for batching a family), `reloadIfClient()` / `reloadData()` (asset + datapack reload), `writeScript(id, source)`, and `describe(e)`. |
 | `ItemPipeline.java` | ITEM generation: texture → name + description → behavior script → commit. Also exposes `runForSlot(index, …)` for `/conjure edit`. |
-| `BlockPipeline.java` | BLOCK generation: texture → name → machine/script/plain decision → allocates MACHINE or SOLID slot accordingly → writes four asset files → commit. |
+| `BlockPipeline.java` | BLOCK generation: texture → name → machine/script/plain decision → allocates MACHINE or SOLID slot → commit. Any block (recipes enabled) also gets a shapeless crafting recipe from vanilla ingredients. A building material instead expands into a **family** (base + smooth/bricks cubes + slab/stairs/wall) wired with vanilla-pattern recipes, committed quietly with one asset + datapack reload at the end. |
 | `FluidPipeline.java` | FLUID generation: still texture (reused for flow) → name → writes still + flow PNGs via `FluidAssets` → commit. |
 | `EntityPipeline.java` | ENTITY generation: skin texture → name → writes skin PNG via `EntityAssets` → assigns default attribute numbers → commit. |
 | `StructurePipeline.java` | STRUCTURE generation: asks the text model for a palette + 3D block grid (≤ 9×9×9) → name → stores layout in `SlotDefinition.strings/numbers` → commit. Placement is deferred to `/conjure place`. |

@@ -2,6 +2,7 @@ package dev.conjure.gen.pipeline;
 
 import dev.conjure.Conjure;
 import dev.conjure.ai.ProviderFactory;
+import dev.conjure.ai.TextureKind;
 import dev.conjure.ai.agents.DataAgent;
 import dev.conjure.ai.agents.LogicAgent;
 import dev.conjure.ai.agents.TextureAgent;
@@ -38,7 +39,7 @@ public final class ItemPipeline implements GenerationPipeline {
                 slot, ProviderFactory.text().id(), prompt);
 
         feedback.accept("§7[Conjure] Generating texture…");
-        int[][] argb = new TextureAgent().generate(prompt);
+        int[][] argb = new TextureAgent().generate(prompt, TextureKind.ITEM);
         DynamicPackManager.writeItemTexture(slot, argb);
         DynamicPackManager.writeItemModel(slot);
 

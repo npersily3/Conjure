@@ -77,6 +77,8 @@ Generated assets live under `run/conjure/` — `generated/` (textures, models, s
 - `[image] quality = FAST | HIGH` — FAST (fewer steps, 512px native, seconds) vs HIGH (more steps, 768px native, slow).
 - `[features] entityAnimations` — play GeckoLib idle/walk animations on mobs (off = static pose).
 - `[features] interactivity` — allow generated blocks to be machines / scripted (off = inert blocks).
+- `[features] recipes` — generate survival recipes and expand building-material blocks into a family
+  (smooth/bricks/slab/stairs/wall) wired by vanilla-pattern recipes (off = one creative-only block).
 
 ### Troubleshooting
 | Symptom | Fix |
@@ -160,6 +162,8 @@ Full design rationale: **`src/ARCHITECTURE.md`**. Contributing with parallel age
 10. ✅ Entity models via GeckoLib (per-slot skin, toggleable animations)
 11. ✅ Command-placed structures (`/conjure place`); Mod Architect (`/conjure mod`); creative tab; names everywhere
 12. ✅ `jarJar` Rhino on the runtime classpath
-13. ⬜ Structure **worldgen** (jigsaw/template-pool so structures spawn in new chunks naturally)
-14. ⬜ Animated fluid sprites; per-slot rigged GeckoLib models; datapack recipes/loot
-15. ⬜ Dedicated-server sync (slots are client-local; singleplayer only)
+13. ✅ Survival recipes: building-material blocks expand into a family (smooth/bricks/slab/stairs/wall)
+    wired by vanilla-pattern crafting/smelting/stonecutting recipes, applied live via datapack reload
+14. ⬜ Structure **worldgen** (jigsaw/template-pool so structures spawn in new chunks naturally)
+15. ⬜ Animated fluid sprites; per-slot rigged GeckoLib models; item recipes + loot tables
+16. ⬜ Dedicated-server sync (slots are client-local; singleplayer only)

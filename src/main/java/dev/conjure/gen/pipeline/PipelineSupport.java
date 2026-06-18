@@ -4,9 +4,11 @@ import dev.conjure.client.ClientHooks;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotRegistry;
 import dev.conjure.persist.SlotStore;
+import net.minecraft.server.MinecraftServer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,15 +27,36 @@ public final class PipelineSupport {
      * {@link SlotStore}, and triggers a client-side resource reload so new assets appear live.
      */
     public static void commit(SlotDefinition def) throws Exception {
+        commitQuiet(def);
+        reloadIfClient();
+    }
+
+    /**
+     * Publishes a slot (registry + persistence) WITHOUT triggering a client reload. Used when
+     * committing many slots at once (a material family); the caller reloads once at the end via
+     * {@link #reloadIfClient()} to avoid a reload per member.
+     */
+    public static void commitQuiet(SlotDefinition def) throws Exception {
         SlotRegistry.put(def);
         SlotStore.save(def);
-        reloadIfClient();
     }
 
     /** Triggers a client resource-pack reload (no-op on a dedicated server). */
     public static void reloadIfClient() {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             ClientHooks.reloadResources();
+        }
+    }
+
+    /**
+     * Reloads the integrated/dedicated server's datapacks so newly written recipes take effect
+     * without a relaunch (the {@code commit} path only refreshes client <em>assets</em>; recipes
+     * live in the datapack). No-op when no server is running. Scheduled on the server thread.
+     */
+    public static void reloadData() {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            server.execute(() -> server.reloadResources(server.getPackRepository().getSelectedIds()));
         }
     }
 

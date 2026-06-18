@@ -2,6 +2,7 @@ package dev.conjure.gen.pipeline;
 
 import dev.conjure.Conjure;
 import dev.conjure.ai.ProviderFactory;
+import dev.conjure.ai.TextureKind;
 import dev.conjure.ai.agents.DataAgent;
 import dev.conjure.ai.agents.TextureAgent;
 import dev.conjure.content.SlotDefinition;
@@ -34,7 +35,7 @@ public final class FluidPipeline implements GenerationPipeline {
                 slot, ProviderFactory.text().id(), prompt);
 
         feedback.accept("§7[Conjure] Generating fluid texture…");
-        int[][] stillArgb = new TextureAgent().generate(prompt + " liquid fluid");
+        int[][] stillArgb = new TextureAgent().generate(prompt + " liquid fluid", TextureKind.FLUID);
         // v1: flow texture reuses the still sprite (same pixel data)
         int[][] flowArgb = stillArgb;
 

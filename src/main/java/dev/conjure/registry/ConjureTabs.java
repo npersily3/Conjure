@@ -42,6 +42,22 @@ public final class ConjureTabs {
                                 output.accept(ConjureItems.BLOCK_ITEMS.get(i).get());
                             }
                         }
+                        // Shaped block variants (slabs / stairs / walls)
+                        for (int i = 0; i < ConjureSlabs.SLAB_ITEMS.size(); i++) {
+                            if (SlotRegistry.get(SlotKind.SLAB, i).configured) {
+                                output.accept(ConjureSlabs.SLAB_ITEMS.get(i).get());
+                            }
+                        }
+                        for (int i = 0; i < ConjureStairs.STAIR_ITEMS.size(); i++) {
+                            if (SlotRegistry.get(SlotKind.STAIRS, i).configured) {
+                                output.accept(ConjureStairs.STAIR_ITEMS.get(i).get());
+                            }
+                        }
+                        for (int i = 0; i < ConjureWalls.WALL_ITEMS.size(); i++) {
+                            if (SlotRegistry.get(SlotKind.WALL, i).configured) {
+                                output.accept(ConjureWalls.WALL_ITEMS.get(i).get());
+                            }
+                        }
                         // Generated fluids (their buckets)
                         for (int i = 0; i < ConjureFluids.BUCKET_SLOTS.size(); i++) {
                             if (SlotRegistry.get(SlotKind.FLUID, i).configured) {

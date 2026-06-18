@@ -11,7 +11,7 @@ The sub-packages contain the concrete shell classes for each content kind.
 
 | File | Purpose |
 |------|---------|
-| `SlotKind.java` | Enum of the five content families: `ITEM`, `BLOCK`, `FLUID`, `ENTITY`, `STRUCTURE`. Used as the first dimension of the `SlotRegistry` key. |
+| `SlotKind.java` | Enum of the content families: `ITEM`, `BLOCK`, `FLUID`, `ENTITY`, `STRUCTURE`, plus the shaped building-block variants `SLAB`, `STAIRS`, `WALL` (derived from a base block during material-family generation). First dimension of the `SlotRegistry` key. |
 | `SlotDefinition.java` | Mutable runtime description of a pre-registered slot: `displayName`, `texturePath`, `behaviorScriptId`, `sourcePrompt`, plus open-ended `numbers` and `strings` maps for extra data. When `configured == false` the slot is still an empty placeholder. |
 | `SlotRegistry.java` | Concurrent `(SlotKind, index) → SlotDefinition` map. `put(def)` swaps a fully-built definition atomically; `firstFree(kind, poolSize)` finds the lowest unconfigured slot for new generation. |
 
@@ -19,7 +19,7 @@ The sub-packages contain the concrete shell classes for each content kind.
 
 | Package | Contents |
 |---------|----------|
-| [`block/`](block/README.md) | `ConjureBlock`, `ConjureBlockEntity`, `ConjureMenu`, `BlockArchetype` |
+| [`block/`](block/README.md) | `ConjureBlock`, `ConjureBlockEntity`, `ConjureMenu`, `BlockArchetype`, `ConjureSlabBlock`, `ConjureStairBlock`, `ConjureWallBlock` |
 | [`entity/`](entity/README.md) | `ConjureMob` |
 | [`fluid/`](fluid/README.md) | `ConjureFluidType`, `ConjureBucketItem`, `ConjureLiquidBlock`, `ConjureFluidClientExtensions` |
 | [`item/`](item/README.md) | `ConjureItem`, `ConjureBlockItem` |

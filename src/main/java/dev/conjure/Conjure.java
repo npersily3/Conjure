@@ -9,8 +9,11 @@ import dev.conjure.registry.ConjureMenus;
 import dev.conjure.registry.ConjureEntities;
 import dev.conjure.registry.ConjureFluids;
 import dev.conjure.registry.ConjureItems;
+import dev.conjure.registry.ConjureSlabs;
+import dev.conjure.registry.ConjureStairs;
 import dev.conjure.registry.ConjureStructures;
 import dev.conjure.registry.ConjureTabs;
+import dev.conjure.registry.ConjureWalls;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -33,6 +36,9 @@ public final class Conjure {
     public Conjure(IEventBus modBus, ModContainer container) {
         ConjureItems.ITEMS.register(modBus);   // 500 item shells + every block's BlockItem
         ConjureBlocks.BLOCKS.register(modBus); // 500 block shells across archetype buckets
+        ConjureSlabs.register(modBus);         // shaped variant pools: slabs / stairs / walls
+        ConjureStairs.register(modBus);        //   (filled by material-family generation)
+        ConjureWalls.register(modBus);
         ConjureBlockEntities.BLOCK_ENTITIES.register(modBus); // shared machine BlockEntity (MACHINE blocks)
         ConjureMenus.MENUS.register(modBus);   // shared machine container menu
         ConjureFluids.register(modBus);        // 32 fluid sets (source+flowing+block+bucket)

@@ -13,4 +13,4 @@ override `getName(stack)`.
 | File | Purpose |
 |------|---------|
 | `ConjureItem.java` | Pre-registered item shell (500 of them). `getName(stack)` returns `SlotDefinition.displayName`. On right-click (server side), loads and executes the slot's behavior script via `ScriptRuntime`. |
-| `ConjureBlockItem.java` | `BlockItem` subclass for block slots. Overrides `getName(stack)` to return the AI-generated display name from the block's `SlotDefinition`, replacing the internal `block_slot_N` translation key. |
+| `ConjureBlockItem.java` | `BlockItem` subclass for block slots, parameterised by `SlotKind` so it backs the cube pool (`BLOCK`) and the shaped variant pools (`SLAB`/`STAIRS`/`WALL`). Overrides `getName(stack)` to return the AI-generated display name, replacing the internal `*_slot_N` key. |

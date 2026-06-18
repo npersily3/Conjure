@@ -32,6 +32,7 @@ public final class Config {
     // --- feature toggles (modularity) ---
     public static final ModConfigSpec.BooleanValue ENTITY_ANIMATIONS;
     public static final ModConfigSpec.BooleanValue INTERACTIVITY_ENABLED;
+    public static final ModConfigSpec.BooleanValue RECIPES_ENABLED;
     public static final ModConfigSpec.BooleanValue AUTO_INSTALL_BACKENDS;
 
     static {
@@ -69,6 +70,11 @@ public final class Config {
                 .define("entityAnimations", true);
         INTERACTIVITY_ENABLED = b.comment("Allow generated blocks to be interactive (machines / scripted)")
                 .define("interactivity", true);
+        RECIPES_ENABLED = b.comment(
+                "Generate survival recipes for blocks/items, and expand building-material blocks into",
+                "a family (smooth/bricks/slab/stairs/wall) wired by vanilla-pattern recipes (off = a",
+                "single creative-only block per prompt).")
+                .define("recipes", true);
         AUTO_INSTALL_BACKENDS = b.comment(
                 "On first launch, automatically download/install the AI backends this mod needs",
                 "(Ollama + the local text model, and ComfyUI + a checkpoint). Windows-only for now;",

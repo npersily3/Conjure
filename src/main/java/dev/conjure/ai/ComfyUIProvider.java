@@ -36,16 +36,31 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class ComfyUIProvider implements ImageModelProvider {
 
     /**
-     * Pixel-art / game-icon suffix appended to the user prompt to nudge diffusion toward
-     * crisp, low-resolution Minecraft-style output.
+     * Pixel-art / game-icon suffix appended to an ITEM/ENTITY/FLUID prompt to nudge diffusion
+     * toward a crisp, low-resolution Minecraft sprite (centered subject on a transparent BG).
      */
-    private static final String PROMPT_SUFFIX =
+    private static final String ITEM_SUFFIX =
             ", pixel art, game icon, Minecraft item icon, 16-bit sprite, transparent background, "
             + "clean edges, vibrant colors, simple design";
 
-    private static final String NEGATIVE_PROMPT =
+    /**
+     * Block suffix: a tileable, opaque <em>surface</em> that fills the frame — the opposite of a
+     * centered icon. Without this, diffusion paints the subject as a single object on a backdrop,
+     * which looks like a floating block when applied to all six faces.
+     */
+    private static final String BLOCK_SUFFIX =
+            ", flat tileable seamless block surface texture, top-down orthographic, fills the "
+            + "entire frame edge to edge, no background, no object, no perspective, pixel art, "
+            + "16-bit, Minecraft block texture";
+
+    private static final String NEGATIVE_BASE =
             "blurry, anti-aliasing, smooth gradients, photorealistic, photo, 3d render, "
             + "watermark, signature, text, low quality, deformed";
+
+    /** Extra negatives for blocks: kill the "object on a background" failure mode. */
+    private static final String BLOCK_NEGATIVE_EXTRA =
+            ", centered object, single object, background, drop shadow, border, frame, vignette, "
+            + "perspective";
 
     /** How long to keep polling {@code /history} before giving up. */
     private static final Duration POLL_TIMEOUT = Duration.ofMinutes(10);
@@ -79,22 +94,32 @@ public final class ComfyUIProvider implements ImageModelProvider {
     }
 
     @Override
-    public byte[] generateTexture(String prompt, int size) throws Exception {
+    public byte[] generateTexture(String prompt, int size, TextureKind kind) throws Exception {
         // 1. Queue the workflow.
-        String promptId = queuePrompt(prompt);
+        String promptId = queuePrompt(prompt, kind);
         // 2. Wait for the render to finish and locate the produced image.
         JsonObject image = awaitImage(promptId);
         // 3. Download the raw PNG bytes.
         return fetchImage(image);
     }
 
+    /** Positive-prompt suffix for the texture kind. */
+    private static String suffixFor(TextureKind kind) {
+        return kind == TextureKind.BLOCK ? BLOCK_SUFFIX : ITEM_SUFFIX;
+    }
+
+    /** Negative prompt for the texture kind. */
+    private static String negativeFor(TextureKind kind) {
+        return kind == TextureKind.BLOCK ? NEGATIVE_BASE + BLOCK_NEGATIVE_EXTRA : NEGATIVE_BASE;
+    }
+
     // -------------------------------------------------------------------------
     // Step 1: queue a txt2img workflow
     // -------------------------------------------------------------------------
 
-    private String queuePrompt(String prompt) throws Exception {
+    private String queuePrompt(String prompt, TextureKind kind) throws Exception {
         JsonObject payload = new JsonObject();
-        payload.add("prompt", buildWorkflow(prompt));
+        payload.add("prompt", buildWorkflow(prompt, kind));
         payload.addProperty("client_id", clientId);
 
         HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint + "/prompt"))
@@ -126,7 +151,7 @@ public final class ComfyUIProvider implements ImageModelProvider {
      * Builds a standard txt2img workflow graph in ComfyUI's API JSON format. Node ids are arbitrary
      * strings; each node references another node's output as {@code ["<id>", <slotIndex>]}.
      */
-    private JsonObject buildWorkflow(String prompt) {
+    private JsonObject buildWorkflow(String prompt, TextureKind kind) {
         JsonObject graph = new JsonObject();
 
         // 4: load the checkpoint (outputs: 0=MODEL, 1=CLIP, 2=VAE)
@@ -136,12 +161,12 @@ public final class ComfyUIProvider implements ImageModelProvider {
         // 6 / 7: positive + negative conditioning
         graph.add("6", node("CLIPTextEncode",
                 inputs(o -> {
-                    o.addProperty("text", prompt + PROMPT_SUFFIX);
+                    o.addProperty("text", prompt + suffixFor(kind));
                     o.add("clip", link("4", 1));
                 })));
         graph.add("7", node("CLIPTextEncode",
                 inputs(o -> {
-                    o.addProperty("text", NEGATIVE_PROMPT);
+                    o.addProperty("text", negativeFor(kind));
                     o.add("clip", link("4", 1));
                 })));
 

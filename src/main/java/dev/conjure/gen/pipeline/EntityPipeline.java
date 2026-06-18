@@ -1,6 +1,7 @@
 package dev.conjure.gen.pipeline;
 
 import dev.conjure.ai.ProviderFactory;
+import dev.conjure.ai.TextureKind;
 import dev.conjure.ai.agents.DataAgent;
 import dev.conjure.ai.agents.TextureAgent;
 import dev.conjure.content.SlotDefinition;
@@ -46,7 +47,7 @@ public final class EntityPipeline implements GenerationPipeline {
 
         // --- Skin texture -----------------------------------------------------
         feedback.accept("§7[Conjure] Generating entity skin…");
-        int[][] argb = new TextureAgent().generate(prompt);
+        int[][] argb = new TextureAgent().generate(prompt, TextureKind.ENTITY);
         EntityAssets.writeSkinTexture(slot, argb);
 
         // --- Name (from DataAgent) --------------------------------------------

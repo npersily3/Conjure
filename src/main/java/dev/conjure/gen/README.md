@@ -14,7 +14,8 @@ executor) so the game thread is never blocked.
 |------|---------|
 | `GenerationService.java` | The single-piece dispatcher. Routes a prompt through `RouterAgent` to the matching `GenerationPipeline`, runs it on the `conjure-gen` worker thread. Also exposes `regenerateItem` for `/conjure edit`. |
 | `ModService.java` | Multi-piece orchestrator. Runs `ModPlannerAgent` on a `conjure-mod-planner` daemon thread to decompose a description into pieces, then enqueues each piece onto `GenerationService`. Two modes: `buildMod` (always-expansive) and `build` (auto-mode for `/conjure new`). |
-| `DynamicPackManager.java` | Owns the on-disk pack at `<gamedir>/conjure/generated/`. Provides per-kind write methods for textures, models, block states, and block-item models. Also exposes generic `write` and `writePngAt` helpers for pipelines that need custom paths. |
+| `DynamicPackManager.java` | Owns the on-disk pack at `<gamedir>/conjure/generated/` (registered as both resource pack and datapack). Per-kind write methods for cube textures/models/blockstates/item-models and for slab/stairs/wall assets (which reuse a base texture). Generic `write`/`writePngAt` helpers for custom paths (recipes use `write`). |
+| `RecipeTemplates.java` | Deterministic vanilla-pattern recipe JSON for a material family (3-across → 6 slabs, stairs pattern → 4, smelt → smooth, stonecutter). Pure `*Json` builders + `writeFamily`; runnable self-check in `main`. |
 | `PixelTexture.java` | Static utilities for PNG I/O: `fromPng(byte[], targetSize)` nearest-neighbour downscales a raw PNG to a target size; `writePng(argb, path)` encodes an ARGB grid to a PNG file; `parseColor` parses `#RRGGBB`/`#AARRGGBB` hex strings. |
 
 ## Sub-packages

@@ -44,7 +44,8 @@ public final class ConjureBlocks {
                 final int blockSlot = slot;
                 ConjureItems.BLOCK_ITEMS.add(ConjureItems.ITEMS.register(
                         "block_slot_" + slot,
-                        () -> new ConjureBlockItem(blockHolder.get(), blockSlot, new Item.Properties())));
+                        () -> new ConjureBlockItem(
+                                blockHolder.get(), SlotKind.BLOCK, blockSlot, new Item.Properties())));
                 idx++;
             }
         }

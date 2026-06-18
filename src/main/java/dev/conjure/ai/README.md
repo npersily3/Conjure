@@ -13,10 +13,11 @@ package is purely about the transport and configuration layer.
 | File | Purpose |
 |------|---------|
 | `TextModelProvider.java` | Interface: `complete(system, user) → String` plus a human-readable `id()`. All text/logic agents use this. |
-| `ImageModelProvider.java` | Interface: `generateTexture(prompt, size) → byte[]` (raw PNG). Used by `TextureAgent`. |
+| `ImageModelProvider.java` | Interface: `generateTexture(prompt, size, kind) → byte[]` (raw PNG). Used by `TextureAgent`. |
+| `TextureKind.java` | Enum: `ITEM`/`BLOCK`/`ENTITY`/`FLUID`. Steers prompts — a BLOCK gets an opaque tileable-surface prompt, an ITEM a centered-icon-on-transparent prompt. |
 | `OllamaProvider.java` | `TextModelProvider` that talks to a local Ollama server via `POST /api/chat`. Default local-mode backend. |
 | `AnthropicProvider.java` | `TextModelProvider` that calls the Anthropic Messages API. API key read from an env var named in config. |
-| `ComfyUIProvider.java` | `ImageModelProvider` for a local ComfyUI server: queues a txt2img workflow graph, polls `/history`, downloads the PNG. Three-step async protocol. |
+| `ComfyUIProvider.java` | `ImageModelProvider` for a local ComfyUI server: queues a txt2img workflow graph, polls `/history`, downloads the PNG. Three-step async protocol. Positive/negative prompts vary by `TextureKind` (block vs icon). |
 | `ProviderFactory.java` | Reads `Config` and constructs the active `TextModelProvider` or `ImageModelProvider`. Called per-request so config edits apply live. |
 | `ProviderMode.java` | Enum: `LOCAL` (Ollama / ComfyUI) or `ANTHROPIC` (cloud). Controls routing in `ProviderFactory`. |
 | `ImageQuality.java` | Enum: `FAST` (fewer diffusion steps, 512 px native) or `HIGH` (more steps, 768 px native). Drives ComfyUI step count and native resolution. |
