@@ -70,6 +70,7 @@ public final class GenerationService {
      */
     public static void generate(String prompt, Consumer<String> feedback) {
         POOL.submit(() -> {
+            GenerationStatus.begin();
             try {
                 feedback.accept("§7[Conjure] Deciding what to build…");
                 SlotKind kind = new RouterAgent().classify(prompt);
@@ -84,6 +85,8 @@ public final class GenerationService {
             } catch (Exception e) {
                 Conjure.LOGGER.error("Conjure generation failed", e);
                 feedback.accept("Generation failed: " + PipelineSupport.describe(e));
+            } finally {
+                GenerationStatus.end();
             }
         });
     }
@@ -94,6 +97,7 @@ public final class GenerationService {
      */
     public static void regenerateItem(int slotIndex, String prompt, Consumer<String> feedback) {
         POOL.submit(() -> {
+            GenerationStatus.begin();
             try {
                 if (slotIndex < 0 || slotIndex >= ConjureItems.ITEM_POOL) {
                     feedback.accept("Invalid slot index " + slotIndex
@@ -104,6 +108,8 @@ public final class GenerationService {
             } catch (Exception e) {
                 Conjure.LOGGER.error("Conjure regeneration failed for slot {}", slotIndex, e);
                 feedback.accept("Regeneration failed: " + PipelineSupport.describe(e));
+            } finally {
+                GenerationStatus.end();
             }
         });
     }
@@ -114,6 +120,7 @@ public final class GenerationService {
      */
     public static void regenerate(SlotKind kind, int slotIndex, String prompt, Consumer<String> feedback) {
         POOL.submit(() -> {
+            GenerationStatus.begin();
             try {
                 GenerationPipeline pipeline = PIPELINES.get(kind);
                 if (pipeline == null) {
@@ -130,6 +137,8 @@ public final class GenerationService {
             } catch (Exception e) {
                 Conjure.LOGGER.error("Conjure regeneration failed for {} slot {}", kind, slotIndex, e);
                 feedback.accept("Regeneration failed: " + PipelineSupport.describe(e));
+            } finally {
+                GenerationStatus.end();
             }
         });
     }
