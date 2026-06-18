@@ -22,10 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <h2>Sandbox design</h2>
  * <ul>
- *   <li><b>ClassShutter</b> — returns {@code false} for every class name, so scripts
- *       cannot import or access any Java class via {@code Packages.*} or reflection.
- *       The only Java objects reachable by a script are those explicitly placed in the
- *       top-level scope (currently just {@code ctx}).</li>
+ *   <li><b>ClassShutter</b> — denies every Java class except the {@link ScriptContext}
+ *       bridge, so scripts cannot import or access any other Java class via {@code Packages.*}
+ *       or reflection. The bridge must be visible for Rhino to wrap the {@code ctx} object;
+ *       it is the only Java object reachable from a script.</li>
  *   <li><b>WrapFactory</b> — {@code setJavaPrimitiveWrap(false)} so primitive numbers/
  *       strings are not wrapped into Java objects, keeping the script in JS-land.</li>
  *   <li><b>Interpreted mode</b> — {@code setOptimizationLevel(-1)} disables bytecode
@@ -87,7 +87,7 @@ public final class ScriptRuntime {
         try {
             rhinoCtx.setOptimizationLevel(-1); // interpreted — ensures instruction observer fires
             rhinoCtx.setInstructionObserverThreshold(OBSERVER_THRESHOLD);
-            rhinoCtx.setClassShutter(DENY_ALL_SHUTTER);
+            rhinoCtx.setClassShutter(SHUTTER);
             rhinoCtx.setWrapFactory(SAFE_WRAP_FACTORY);
 
             Scriptable scope = buildScope(rhinoCtx, ctx);
@@ -144,7 +144,7 @@ public final class ScriptRuntime {
         Context rhinoCtx = factory.enterContext();
         try {
             rhinoCtx.setOptimizationLevel(-1);
-            rhinoCtx.setClassShutter(DENY_ALL_SHUTTER);
+            rhinoCtx.setClassShutter(SHUTTER);
             Script compiled = rhinoCtx.compileString(source, scriptId + ".js", 1, null);
             // Evict stale keys for this scriptId before inserting the new one.
             compiledCache.entrySet().removeIf(e -> e.getKey().startsWith(scriptId + ":"));
@@ -175,8 +175,13 @@ public final class ScriptRuntime {
     // Sandbox helpers — stateless, safe as constants
     // -------------------------------------------------------------------------
 
-    /** Denies all Java class visibility from scripts. */
-    private static final ClassShutter DENY_ALL_SHUTTER = className -> false;
+    /**
+     * Allows ONLY the {@link ScriptContext} bridge class; denies every other Java class.
+     * The bridge itself must be visible or Rhino cannot wrap the {@code ctx} object it exposes
+     * (it would throw "Access to Java class … is prohibited" the instant {@code ctx} is bound).
+     */
+    private static final String CTX_CLASS_NAME = ScriptContext.class.getName();
+    private static final ClassShutter SHUTTER = className -> CTX_CLASS_NAME.equals(className);
 
     /** Prevents primitive wrapping so numbers/strings stay as JS types. */
     private static final WrapFactory SAFE_WRAP_FACTORY = new WrapFactory() {

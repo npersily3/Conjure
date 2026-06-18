@@ -55,6 +55,18 @@ public final class BlockPipeline implements GenerationPipeline {
             + BlockArchetype.CUSTOM_SHAPE.count
             + BlockArchetype.LIGHT.count;
 
+    /**
+     * First unconfigured slot in the MACHINE sub-range {@code [MACHINE_OFFSET, +MACHINE.count)},
+     * or {@code -1} if the whole sub-range is full. {@link SlotRegistry#firstFree} only scans from
+     * index 0, so it can never return a machine-range slot — we must scan the offset range here.
+     */
+    private static int firstFreeMachineSlot() {
+        for (int i = MACHINE_OFFSET; i < MACHINE_OFFSET + BlockArchetype.MACHINE.count; i++) {
+            if (!SlotRegistry.get(SlotKind.BLOCK, i).configured) return i;
+        }
+        return -1;
+    }
+
     @Override
     public void run(String prompt, Consumer<String> feedback) throws Exception {
 
@@ -83,11 +95,10 @@ public final class BlockPipeline implements GenerationPipeline {
         // --- Allocate the correct slot based on interaction kind ---
         final int slot;
         if (machineResult.kind() == MachineAgent.Kind.WORKBENCH) {
-            // Allocate from the MACHINE sub-range (MACHINE_OFFSET .. MACHINE_OFFSET + MACHINE.count)
-            int freeInMachine = SlotRegistry.firstFree(SlotKind.BLOCK,
-                    MACHINE_OFFSET + BlockArchetype.MACHINE.count);
-            if (freeInMachine < MACHINE_OFFSET) {
-                // All MACHINE slots taken; fallback to SOLID
+            // Allocate from the MACHINE sub-range [MACHINE_OFFSET, MACHINE_OFFSET + MACHINE.count).
+            int freeInMachine = firstFreeMachineSlot();
+            if (freeInMachine < 0) {
+                // All MACHINE slots taken; fall back to a SOLID slot as a plain block.
                 int solidFree = SlotRegistry.firstFree(SlotKind.BLOCK, BlockArchetype.SOLID.count);
                 if (solidFree < 0) {
                     feedback.accept("All MACHINE and SOLID block slots are full.");
