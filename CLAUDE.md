@@ -72,3 +72,4 @@ compiles its own worktree, parent merges + does one clean compile + commits.
 ## Conventions for working here
 - Commit/branch only when asked. Don't skip hooks.
 - Keep changes compiling; run `./gradlew compileJava` before declaring done.
+- Every source folder has a `README.md` listing its files and their purpose. When you add, remove, or repurpose a file, update that folder's `README.md` in the same change; when you create a new folder, add its `README.md`.
