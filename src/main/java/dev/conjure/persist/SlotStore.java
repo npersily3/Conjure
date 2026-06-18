@@ -16,11 +16,12 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * Persists and loads {@link SlotDefinition}s (for item slots) to/from
- * {@code <gamedir>/conjure/slots/item_<index>.json}.
+ * Persists and loads {@link SlotDefinition}s for every kind to/from
+ * {@code <gamedir>/conjure/slots/<kind>_<index>.json}.
  *
- * <p>Only ITEM kind slots are handled here; the per-file layout keeps each item's data
- * independently readable and avoids write-contention between parallel generation tasks.
+ * <p>The kind is encoded in the filename, so all kinds share this store; the per-file layout
+ * keeps each slot's data independently readable and avoids write-contention between parallel
+ * generation tasks.
  *
  * <p>Fields serialised: {@code displayName}, {@code texturePath}, {@code behaviorScriptId},
  * {@code sourcePrompt}, {@code numbers}, {@code strings}. The {@code kind} and
@@ -42,7 +43,7 @@ public final class SlotStore {
     // -------------------------------------------------------------------------
 
     /**
-     * Serialises {@code def} to {@code <gamedir>/conjure/slots/item_<index>.json}.
+     * Serialises {@code def} to {@code <gamedir>/conjure/slots/<kind>_<index>.json}.
      * Creates parent directories on first call.
      *
      * @param def the fully-configured {@link SlotDefinition} to persist

@@ -41,7 +41,7 @@ unzip -o -q build/moddev/artifacts/neoforge-21.1.93-sources.jar \
   resource pack registered in `client/ConjureClientPack`); `ClientHooks.reloadResources()`
   applies them live.
 - **Model routing**: `dev.conjure.Config` + `dev.conjure.ai` — LOCAL (Ollama, default,
-  `llama3.3:latest`) or ANTHROPIC (key from env var). `ProviderFactory.text()`.
+  `gemma4:latest`) or ANTHROPIC (key from env var). `ProviderFactory.text()`.
 
 ## Layout
 ```
@@ -50,15 +50,19 @@ dev.conjure
 ├─ content/                            slot store + item/block/fluid/entity/structure shells
 ├─ registry/                           the pre-registered pools
 ├─ ai/                                 providers + generation sub-agents
-├─ gen/                                orchestration, dynamic pack, pixel-art
+├─ gen/                                orchestration, pipelines, dynamic pack, pixel-art
 ├─ script/                             sandboxed Rhino runtime (behavior)
-├─ client/                            client-only pack registration + reload
+├─ persist/                            slot metadata save/load (survives restart)
+├─ bootstrap/                          first-launch backend installer (Ollama, ComfyUI)
+├─ client/                            client-only pack registration + reload + GUI
 └─ command/                           /conjure commands
 ```
 
 ## Status & roadmap
-Roadmap lives in `README.md`. Pools: items+blocks done; fluids/entities/structures + Rhino
-scripting + multi-agent generation + persistence + `/conjure list|edit` are the current build.
+Roadmap lives in `README.md`. All five kinds (items/blocks/fluids/entities/structures) generate
+end-to-end via the router + per-kind pipelines, with Rhino scripting, multi-agent generation,
+persistence, and `/conjure list|edit|place|mod`. Remaining roadmap items (worldgen, per-slot
+entity models, datapack recipes, dedicated-server sync) are unchecked in `README.md`.
 Singleplayer only for now (slots are client-local; dedicated-server sync is future).
 
 ## Parallel agent work (default for multi-part tasks)

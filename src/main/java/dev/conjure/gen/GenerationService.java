@@ -41,8 +41,8 @@ public final class GenerationService {
     private static final ItemPipeline ITEM_PIPELINE = new ItemPipeline();
 
     /**
-     * Kind → pipeline. ITEM and BLOCK ship today; FLUID / ENTITY / STRUCTURE are added here as
-     * their pipelines land (the dispatcher reports a clear message for any unmapped kind).
+     * Kind → pipeline. All five kinds (ITEM, BLOCK, FLUID, ENTITY, STRUCTURE) are mapped; the
+     * dispatcher reports a clear message for any unmapped kind.
      */
     private static final Map<SlotKind, GenerationPipeline> PIPELINES = new EnumMap<>(SlotKind.class);
 

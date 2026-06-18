@@ -1,36 +1,8 @@
 package dev.conjure.gen;
 
-/*
- * PARENT WIRING INSTRUCTION
- * =========================
- * Add the following sub-command to ConjureCommands.java inside the /conjure dispatcher:
- *
- *   .then(Commands.literal("mod")
- *       .then(Commands.argument("description", StringArgumentType.greedyString())
- *           .executes(ctx -> {
- *               String description = StringArgumentType.getString(ctx, "description");
- *               CommandSourceStack source = ctx.getSource();
- *               MinecraftServer server = source.getServer();
- *
- *               source.sendSuccess(
- *                   () -> Component.literal("§7Planning mod \"" + description + "\"… (this may take a minute)"),
- *                   false);
- *
- *               ModService.buildMod(description, msg ->
- *                   server.execute(() -> source.sendSystemMessage(
- *                       Component.literal("§a[Conjure] §f" + msg))));
- *               return 1;
- *           })))
- *
- * Required imports to add to ConjureCommands.java:
- *   import dev.conjure.gen.ModService;
- *
- * Call signature: ModService.buildMod(String modDescription, Consumer<String> feedback)
- * The method is non-blocking — it returns immediately and dispatches work to a daemon thread.
- */
-
 import dev.conjure.Conjure;
 import dev.conjure.ai.agents.ModPlannerAgent;
+import dev.conjure.gen.pipeline.PipelineSupport;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -46,8 +18,7 @@ import java.util.function.Consumer;
  * <p>The planning + dispatch loop runs on a separate daemon thread so neither the server thread
  * nor the generation thread is ever blocked.
  *
- * <p>See the {@code PARENT WIRING INSTRUCTION} comment at the top of this file for how to hook
- * {@code /conjure mod <description>} into {@link dev.conjure.command.ConjureCommands}.
+ * <p>Wired into {@code /conjure mod <description>} via {@link dev.conjure.command.ConjureCommands}.
  */
 public final class ModService {
 
@@ -101,26 +72,11 @@ public final class ModService {
                 }
             } catch (Exception e) {
                 Conjure.LOGGER.error("Conjure planning failed for: {}", description, e);
-                feedback.accept("Planning failed: " + describe(e));
+                feedback.accept("Planning failed: " + PipelineSupport.describe(e));
             }
         }, "conjure-mod-planner");
         planner.setDaemon(true);
         planner.start();
-    }
-
-    /**
-     * Renders an exception as a human-readable, never-null message for the in-game feedback line.
-     * Falls back through cause chain then to the exception class name so bare throwables like
-     * {@link java.net.ConnectException} never surface as "null".
-     */
-    private static String describe(Throwable e) {
-        String msg = e.getMessage();
-        if (msg != null && !msg.isBlank()) return msg;
-        Throwable cause = e.getCause();
-        if (cause != null && cause.getMessage() != null && !cause.getMessage().isBlank()) {
-            return e.getClass().getSimpleName() + ": " + cause.getMessage();
-        }
-        return e.getClass().getSimpleName();
     }
 
     private ModService() {}
