@@ -33,6 +33,11 @@ public class ConjureBlockItem extends BlockItem {
         this.slotIndex = slotIndex;
     }
 
+    /** The live slot definition behind this block-item (used by behavior scripts for cross-object reads). */
+    public SlotDefinition slotDef() {
+        return SlotRegistry.get(kind, slotIndex);
+    }
+
     @Override
     public Component getName(ItemStack stack) {
         SlotDefinition d = SlotRegistry.get(kind, slotIndex);

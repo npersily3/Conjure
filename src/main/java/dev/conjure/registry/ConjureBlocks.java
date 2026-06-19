@@ -4,6 +4,7 @@ import dev.conjure.Conjure;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
 import dev.conjure.content.block.BlockArchetype;
+import dev.conjure.content.block.ConjureActivatableBlock;
 import dev.conjure.content.block.ConjureBlock;
 import dev.conjure.content.item.ConjureBlockItem;
 import net.minecraft.core.registries.Registries;
@@ -36,7 +37,9 @@ public final class ConjureBlocks {
 
                 DeferredHolder<Block, ConjureBlock> blockHolder = BLOCKS.register(
                         "block_slot_" + slot,
-                        () -> new ConjureBlock(a, slot, a.newProperties()));
+                        () -> a == BlockArchetype.ACTIVATABLE
+                                ? new ConjureActivatableBlock(a, slot, a.newProperties())
+                                : new ConjureBlock(a, slot, a.newProperties()));
                 BLOCK_SLOTS.add(blockHolder);
 
                 // Matching ConjureBlockItem (shares the slot id, lives in the ITEM registry).

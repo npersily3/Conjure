@@ -74,6 +74,27 @@ public final class DynamicPackManager {
         write("assets/conjure/models/item/block_slot_" + slot + ".json", json);
     }
 
+    /**
+     * Stateful (ACTIVATABLE) block assets: an "off" texture/model and an "on" texture/model, plus a
+     * blockstate that swaps between them on the {@code active} property (closed↔open, unlit↔lit).
+     * The block-item shows the "off" model.
+     */
+    public static void writeActivatableAssets(int slot, int[][] off, int[][] on) throws IOException {
+        String base = "block_slot_" + slot;
+        writeBlockTexture(slot, off);
+        PixelTexture.writePng(on, root().resolve("assets/conjure/textures/block/" + base + "_active.png"));
+        writeBlockModel(slot); // off model: block_slot_N → off texture
+        write("assets/conjure/models/block/" + base + "_active.json",
+                "{\n  \"parent\": \"minecraft:block/cube_all\",\n"
+                + "  \"textures\": { \"all\": \"conjure:block/" + base + "_active\" }\n}");
+        write("assets/conjure/blockstates/" + base + ".json",
+                "{\n  \"variants\": {\n"
+                + "    \"active=false\": { \"model\": \"conjure:block/" + base + "\" },\n"
+                + "    \"active=true\":  { \"model\": \"conjure:block/" + base + "_active\" }\n"
+                + "  }\n}");
+        writeBlockItemModel(slot);
+    }
+
     // -------------------------------------------------------------------------
     // Shaped block variants (slab / stairs / wall). Each REUSES an existing block texture
     // (textureRef, e.g. "conjure:block/block_slot_5") — the shaped models reference vanilla

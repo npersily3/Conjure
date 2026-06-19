@@ -39,8 +39,8 @@ import java.util.List;
  */
 public final class MachineAgent {
 
-    /** The three possible interaction modes for a generated block. */
-    public enum Kind { PLAIN, SCRIPT, WORKBENCH }
+    /** The interaction modes for a generated block. */
+    public enum Kind { PLAIN, SCRIPT, WORKBENCH, STATEFUL }
 
     /** Maximum number of ingredient cells a workbench recipe may have. */
     public static final int MAX_INPUTS = 9;
@@ -64,8 +64,9 @@ public final class MachineAgent {
             int ticks
     ) {
         /** Convenience constructor for non-workbench results. */
-        public static Result plain()  { return new Result(Kind.PLAIN,  List.of(), "", 1, "", 0); }
-        public static Result script() { return new Result(Kind.SCRIPT, List.of(), "", 1, "", 0); }
+        public static Result plain()    { return new Result(Kind.PLAIN,    List.of(), "", 1, "", 0); }
+        public static Result script()   { return new Result(Kind.SCRIPT,   List.of(), "", 1, "", 0); }
+        public static Result stateful() { return new Result(Kind.STATEFUL, List.of(), "", 1, "", 0); }
     }
 
     private static final String SYSTEM = """
@@ -76,6 +77,10 @@ public final class MachineAgent {
                             similar workstation. Right-clicking opens a crafting GUI with a recipe.
               "script"    — the block does an instant magical/utility effect on right-click (heal,
                             teleport, sparkle, give an item) but does NOT process inputs over time.
+              "stateful"  — the block has an OPEN/CLOSED or ON/OFF state the player toggles: doors,
+                            gates, hatches, lamps, lanterns, switches, levers, OR a locked container
+                            (safe, vault, lockbox) that only opens with the right key item.
+                            Right-clicking toggles its state (or a script gates it on a key).
               "plain"     — purely decorative or structural; nothing happens on right-click.
 
             Prefer "workbench" whenever the block could plausibly turn ingredients into a product.
@@ -104,7 +109,7 @@ public final class MachineAgent {
 
             Reply with ONLY a JSON object (no prose, no markdown fences):
             {
-              "interaction": "plain" | "script" | "workbench",
+              "interaction": "plain" | "script" | "workbench" | "stateful",
               "inputs": ["<item id>", ...],
               "output": "<item id>",
               "output_count": 1,
@@ -162,6 +167,26 @@ public final class MachineAgent {
     }
 
     /**
+     * Words that force a {@link Kind#STATEFUL} result (a toggleable door/lamp/lock). Same reliable
+     * backstop pattern as {@link #WORKBENCH_KEYWORDS}, for weak local models that call an obvious
+     * door or safe "plain".
+     */
+    private static final String[] STATEFUL_KEYWORDS = {
+            "door", "gate", "hatch", "trapdoor", "lamp", "lantern", "switch", "lever",
+            "safe", "vault", "lockbox", "locker", "valve", "floodgate", "drawbridge"
+    };
+
+    /** Whether {@code prompt} names a toggleable stateful block. Pure function. */
+    static boolean isStatefulKeyword(String prompt) {
+        if (prompt == null) return false;
+        String p = prompt.toLowerCase(java.util.Locale.ROOT);
+        for (String kw : STATEFUL_KEYWORDS) {
+            if (p.contains(kw)) return true;
+        }
+        return false;
+    }
+
+    /**
      * Asks the text model what interaction kind best fits {@code prompt} and, for workbenches,
      * fills in a recipe. Falls back to sane defaults on a malformed reply rather than producing an
      * unusable recipe.
@@ -180,16 +205,22 @@ public final class MachineAgent {
         String interaction = obj.has("interaction") ? obj.get("interaction").getAsString() : "plain";
         Kind kind = switch (interaction.toLowerCase().trim()) {
             case "workbench" -> Kind.WORKBENCH;
+            case "stateful"  -> Kind.STATEFUL;
             case "script"    -> Kind.SCRIPT;
             default          -> Kind.PLAIN;
         };
 
-        // Deterministic override: an obvious workstation is always a workbench, even if the model
-        // (often a weak local model) called it plain/script.
-        if (isWorkbenchKeyword(prompt)) kind = Kind.WORKBENCH;
+        // Deterministic overrides: an obvious workstation is always a workbench, an obvious
+        // door/lamp/safe is always stateful, even if a weak local model called it plain/script.
+        if (isWorkbenchKeyword(prompt))      kind = Kind.WORKBENCH;
+        else if (isStatefulKeyword(prompt))  kind = Kind.STATEFUL;
 
         if (kind != Kind.WORKBENCH) {
-            return kind == Kind.SCRIPT ? Result.script() : Result.plain();
+            return switch (kind) {
+                case STATEFUL -> Result.stateful();
+                case SCRIPT   -> Result.script();
+                default       -> Result.plain();
+            };
         }
 
         // The classification reply may already carry a usable recipe; if not (e.g. the model said
@@ -263,6 +294,10 @@ public final class MachineAgent {
         assert isWorkbenchKeyword("clay kiln") : "kiln → workbench";
         assert !isWorkbenchKeyword("glowing crystal block") : "decorative → not forced";
         assert !isWorkbenchKeyword("raw clay block") : "material → not forced";
+        assert isStatefulKeyword("iron bank safe") : "safe → stateful";
+        assert isStatefulKeyword("oak castle door") : "door → stateful";
+        assert isStatefulKeyword("glowing toggle lamp") : "lamp → stateful";
+        assert !isStatefulKeyword("glowing crystal block") : "decorative → not stateful";
         System.out.println("MachineAgent self-check passed.");
     }
 }

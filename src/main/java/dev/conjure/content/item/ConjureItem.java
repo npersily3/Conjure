@@ -10,11 +10,14 @@ import dev.conjure.script.ScriptRuntime;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import org.slf4j.Logger;
 
@@ -40,6 +43,11 @@ public class ConjureItem extends Item {
         return SlotRegistry.get(SlotKind.ITEM, slotIndex);
     }
 
+    /** The live slot definition behind this item (used by behavior scripts for cross-object reads). */
+    public SlotDefinition slotDef() {
+        return def();
+    }
+
     @Override
     public Component getName(ItemStack stack) {
         SlotDefinition d = def();
@@ -55,38 +63,69 @@ public class ConjureItem extends Item {
         }
     }
 
+    /** Right-click in the air: runs the behavior script with no block/entity target. */
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         SlotDefinition d = def();
-
         if (!d.configured) {
             return super.use(level, player, hand);
         }
+        if (level.isClientSide || !hasScript(d)) {
+            return InteractionResultHolder.pass(player.getItemInHand(hand));
+        }
+        boolean ok = runBehavior(player, new ScriptContext(level, player, hand));
+        ItemStack held = player.getItemInHand(hand);
+        return ok ? InteractionResultHolder.sidedSuccess(held, false)
+                  : InteractionResultHolder.fail(held);
+    }
 
-        // Only run the script server-side; the client side is a no-op pass.
+    /**
+     * Right-click on a block: runs the behavior script with the clicked block as the target, so a
+     * script can read the block (e.g. a key checking a safe's {@code keyId}), toggle its state, or
+     * transform it. Returns CONSUME so the interaction does not also fall through to {@link #use}.
+     */
+    @Override
+    public InteractionResult useOn(UseOnContext context) {
+        Level level = context.getLevel();
+        Player player = context.getPlayer();
+        SlotDefinition d = def();
+        if (!d.configured || player == null || !hasScript(d)) {
+            return super.useOn(context);
+        }
         if (level.isClientSide) {
-            return InteractionResultHolder.pass(player.getItemInHand(hand));
+            return InteractionResult.SUCCESS;
         }
+        ScriptContext ctx = new ScriptContext(level, player, context.getHand(),
+                context.getClickedPos(), context.getClickedFace());
+        return runBehavior(player, ctx) ? InteractionResult.CONSUME : InteractionResult.FAIL;
+    }
 
-        String scriptId = d.behaviorScriptId;
-        if (scriptId == null || scriptId.isBlank()) {
-            // Configured slot but no script assigned yet — nothing to do.
-            return InteractionResultHolder.pass(player.getItemInHand(hand));
+    /** Hit a mob: runs the behavior script with that mob as the target (weapon effects). */
+    @Override
+    public boolean hurtEnemy(ItemStack stack, LivingEntity target, LivingEntity attacker) {
+        SlotDefinition d = def();
+        if (attacker instanceof Player player && !attacker.level().isClientSide && hasScript(d)) {
+            runBehavior(player, new ScriptContext(attacker.level(), player, InteractionHand.MAIN_HAND, target));
         }
+        return super.hurtEnemy(stack, target, attacker);
+    }
 
-        ScriptContext ctx = new ScriptContext(level, player, hand);
+    private static boolean hasScript(SlotDefinition d) {
+        return d.configured && d.behaviorScriptId != null && !d.behaviorScriptId.isBlank();
+    }
+
+    /** Runs the slot's behavior script with {@code ctx}; logs + surfaces any error, returns success. */
+    private boolean runBehavior(Player player, ScriptContext ctx) {
+        String scriptId = def().behaviorScriptId;
         try {
             ScriptRuntime.get().run(scriptId, ctx);
+            return true;
         } catch (ScriptException e) {
             LOGGER.error("[Conjure] Script error for item slot {} (scriptId='{}'): {}",
                     slotIndex, scriptId, e.getMessage(), e);
             player.displayClientMessage(
-                    Component.literal("[Conjure] Script error: " + e.getMessage()),
-                    false
-            );
-            return InteractionResultHolder.fail(player.getItemInHand(hand));
+                    Component.literal("[Conjure] Script error: " + e.getMessage()), false);
+            return false;
         }
-
-        return InteractionResultHolder.sidedSuccess(player.getItemInHand(hand), level.isClientSide);
     }
 }

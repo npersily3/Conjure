@@ -55,16 +55,35 @@ public final class BlockPipeline implements GenerationPipeline {
             + BlockArchetype.CUSTOM_SHAPE.count
             + BlockArchetype.LIGHT.count;
 
+    /** Slot offset where the ACTIVATABLE archetype starts (after MACHINE; it is the last bucket). */
+    private static final int ACTIVATABLE_OFFSET = MACHINE_OFFSET + BlockArchetype.MACHINE.count;
+
     /**
      * First unconfigured slot in the MACHINE sub-range {@code [MACHINE_OFFSET, +MACHINE.count)},
      * or {@code -1} if the whole sub-range is full. {@link SlotRegistry#firstFree} only scans from
      * index 0, so it can never return a machine-range slot — we must scan the offset range here.
      */
     private static int firstFreeMachineSlot() {
-        for (int i = MACHINE_OFFSET; i < MACHINE_OFFSET + BlockArchetype.MACHINE.count; i++) {
+        return firstFreeInRange(MACHINE_OFFSET, BlockArchetype.MACHINE.count);
+    }
+
+    /** First unconfigured slot in the ACTIVATABLE sub-range, or {@code -1} if full. */
+    private static int firstFreeActivatableSlot() {
+        return firstFreeInRange(ACTIVATABLE_OFFSET, BlockArchetype.ACTIVATABLE.count);
+    }
+
+    private static int firstFreeInRange(int offset, int count) {
+        for (int i = offset; i < offset + count; i++) {
             if (!SlotRegistry.get(SlotKind.BLOCK, i).configured) return i;
         }
         return -1;
+    }
+
+    /** Lock-like stateful blocks (safe/vault/…) get a gating script + keyId; others toggle freely. */
+    private static boolean isLockLike(String prompt) {
+        String p = prompt.toLowerCase(java.util.Locale.ROOT);
+        return p.contains("safe") || p.contains("vault") || p.contains("lockbox")
+                || p.contains("locker") || p.contains("lock");
     }
 
     @Override
@@ -110,6 +129,17 @@ public final class BlockPipeline implements GenerationPipeline {
             } else {
                 slot = freeInMachine;
             }
+        } else if (machineResult.kind() == MachineAgent.Kind.STATEFUL) {
+            int free = firstFreeActivatableSlot();
+            if (free < 0) {
+                // All stateful slots taken; fall back to a plain SOLID block.
+                int solidFree = SlotRegistry.firstFree(SlotKind.BLOCK, BlockArchetype.SOLID.count);
+                if (solidFree < 0) { feedback.accept("All stateful and solid block slots are full."); return; }
+                slot = solidFree;
+                machineResult = MachineAgent.Result.plain();
+            } else {
+                slot = free;
+            }
         } else {
             // PLAIN and SCRIPT go into the SOLID range
             int solidFree = SlotRegistry.firstFree(SlotKind.BLOCK, BlockArchetype.SOLID.count);
@@ -123,11 +153,17 @@ public final class BlockPipeline implements GenerationPipeline {
         Conjure.LOGGER.info("Conjure: generating block slot {} ({}) via {} for prompt: {}",
                 slot, machineResult.kind(), ProviderFactory.text().id(), prompt);
 
-        // Write assets
-        DynamicPackManager.writeBlockTexture(slot, argb);
-        DynamicPackManager.writeBlockModel(slot);
-        DynamicPackManager.writeBlockState(slot);
-        DynamicPackManager.writeBlockItemModel(slot);
+        // Write assets (stateful blocks get a second "on/open" texture + a variant blockstate)
+        if (machineResult.kind() == MachineAgent.Kind.STATEFUL) {
+            feedback.accept("§7[Conjure] Generating activated texture…");
+            int[][] onArgb = new TextureAgent().generate(prompt + " activated, open, glowing, lit up", TextureKind.BLOCK);
+            DynamicPackManager.writeActivatableAssets(slot, argb, onArgb);
+        } else {
+            DynamicPackManager.writeBlockTexture(slot, argb);
+            DynamicPackManager.writeBlockModel(slot);
+            DynamicPackManager.writeBlockState(slot);
+            DynamicPackManager.writeBlockItemModel(slot);
+        }
 
         // --- Build SlotDefinition ---
         SlotDefinition def = new SlotDefinition(SlotKind.BLOCK, slot);
@@ -142,6 +178,21 @@ public final class BlockPipeline implements GenerationPipeline {
                 WorkbenchRecipes.write(def, machineResult.inputs().size(), machineResult.inputs(),
                         machineResult.output(), machineResult.outputCount(),
                         machineResult.fuel(), machineResult.ticks());
+            }
+            case STATEFUL -> {
+                def.strings.put("interaction", "stateful");
+                if (isLockLike(prompt)) {
+                    // A lock needs a gating script so it does NOT toggle on a bare right-click; only a
+                    // key item whose keyId matches opens it (via the key's useOn → ctx.setBlockActive).
+                    feedback.accept("§7[Conjure] Generating lock behavior…");
+                    String scriptId = "block_slot_" + slot;
+                    PipelineSupport.writeScript(scriptId, new LogicAgent().generateStateful(prompt, true));
+                    def.behaviorScriptId = scriptId;
+                    def.strings.put("keyId", "conjure_key_" + slot);
+                } else {
+                    // A door/lamp/switch toggles freely: no script, the block flips its own state.
+                    def.behaviorScriptId = "";
+                }
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");
@@ -169,6 +220,7 @@ public final class BlockPipeline implements GenerationPipeline {
         String kindLabel = switch (machineResult.kind()) {
             case WORKBENCH -> " [workbench]";
             case SCRIPT    -> " [scripted]";
+            case STATEFUL  -> " [stateful]";
             default        -> "";
         };
         feedback.accept("Conjured '" + data.displayName() + "'" + kindLabel
@@ -193,13 +245,22 @@ public final class BlockPipeline implements GenerationPipeline {
 
         boolean machineSlot = slot >= MACHINE_OFFSET
                 && slot < MACHINE_OFFSET + BlockArchetype.MACHINE.count;
+        // The slot's archetype is fixed: an ACTIVATABLE-range block MUST keep its stateful assets
+        // (its block carries the `active` property, so its blockstate needs both variants).
+        boolean activatableSlot = slot >= ACTIVATABLE_OFFSET
+                && slot < ACTIVATABLE_OFFSET + BlockArchetype.ACTIVATABLE.count;
 
-        MachineAgent.Result result = MachineAgent.Result.plain();
-        if (Config.INTERACTIVITY_ENABLED.get()) {
+        MachineAgent.Result result = activatableSlot ? MachineAgent.Result.stateful()
+                                                     : MachineAgent.Result.plain();
+        if (!activatableSlot && Config.INTERACTIVITY_ENABLED.get()) {
             feedback.accept("§7[Conjure] Deciding interaction kind…");
             result = new MachineAgent().generate(prompt);
             // A non-machine slot has no block entity, so a workbench can't run there — fall back.
             if (result.kind() == MachineAgent.Kind.WORKBENCH && !machineSlot) {
+                result = MachineAgent.Result.plain();
+            }
+            // A STATEFUL classification needs the `active` property, which only ACTIVATABLE slots have.
+            if (result.kind() == MachineAgent.Kind.STATEFUL) {
                 result = MachineAgent.Result.plain();
             }
         }
@@ -207,10 +268,16 @@ public final class BlockPipeline implements GenerationPipeline {
         Conjure.LOGGER.info("Conjure: regenerating block slot {} ({}) via {} for prompt: {}",
                 slot, result.kind(), ProviderFactory.text().id(), prompt);
 
-        DynamicPackManager.writeBlockTexture(slot, argb);
-        DynamicPackManager.writeBlockModel(slot);
-        DynamicPackManager.writeBlockState(slot);
-        DynamicPackManager.writeBlockItemModel(slot);
+        if (activatableSlot) {
+            feedback.accept("§7[Conjure] Generating activated texture…");
+            int[][] onArgb = new TextureAgent().generate(prompt + " activated, open, glowing, lit up", TextureKind.BLOCK);
+            DynamicPackManager.writeActivatableAssets(slot, argb, onArgb);
+        } else {
+            DynamicPackManager.writeBlockTexture(slot, argb);
+            DynamicPackManager.writeBlockModel(slot);
+            DynamicPackManager.writeBlockState(slot);
+            DynamicPackManager.writeBlockItemModel(slot);
+        }
 
         SlotDefinition def = new SlotDefinition(SlotKind.BLOCK, slot);
         def.displayName  = data.displayName();
@@ -223,6 +290,18 @@ public final class BlockPipeline implements GenerationPipeline {
                 def.behaviorScriptId = "";
                 WorkbenchRecipes.write(def, result.inputs().size(), result.inputs(),
                         result.output(), result.outputCount(), result.fuel(), result.ticks());
+            }
+            case STATEFUL -> {
+                def.strings.put("interaction", "stateful");
+                if (isLockLike(prompt)) {
+                    feedback.accept("§7[Conjure] Generating lock behavior…");
+                    String scriptId = "block_slot_" + slot;
+                    PipelineSupport.writeScript(scriptId, new LogicAgent().generateStateful(prompt, true));
+                    def.behaviorScriptId = scriptId;
+                    def.strings.put("keyId", "conjure_key_" + slot);
+                } else {
+                    def.behaviorScriptId = "";
+                }
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");

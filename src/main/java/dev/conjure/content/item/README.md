@@ -12,5 +12,5 @@ override `getName(stack)`.
 
 | File | Purpose |
 |------|---------|
-| `ConjureItem.java` | Pre-registered item shell (500 of them). `getName(stack)` returns `SlotDefinition.displayName`. On right-click (server side), loads and executes the slot's behavior script via `ScriptRuntime`. |
-| `ConjureBlockItem.java` | `BlockItem` subclass for block slots, parameterised by `SlotKind` so it backs the cube pool (`BLOCK`) and the shaped variant pools (`SLAB`/`STAIRS`/`WALL`). Overrides `getName(stack)` to return the AI-generated display name, replacing the internal `*_slot_N` key. |
+| `ConjureItem.java` | Pre-registered item shell (500 of them). `getName(stack)` returns `SlotDefinition.displayName`. Runs the slot's behavior script via `ScriptRuntime` on three hooks: `use` (right-click air, no target), `useOn` (right-click a block — passes the clicked block/face, so a key can unlock a safe), and `hurtEnemy` (hitting a mob — passes the mob for weapon effects). `slotDef()` exposes the slot for cross-object script reads. |
+| `ConjureBlockItem.java` | `BlockItem` subclass for block slots, parameterised by `SlotKind` so it backs the cube pool (`BLOCK`) and the shaped variant pools (`SLAB`/`STAIRS`/`WALL`). Overrides `getName(stack)` to return the AI-generated display name, replacing the internal `*_slot_N` key. `slotDef()` exposes the slot for cross-object script reads. |

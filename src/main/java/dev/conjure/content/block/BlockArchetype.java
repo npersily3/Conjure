@@ -50,7 +50,21 @@ public enum BlockArchetype {
             .strength(3.5f)
             .sound(SoundType.METAL)
             .requiresCorrectToolForDrops()
-            .pushReaction(PushReaction.BLOCK));
+            .pushReaction(PushReaction.BLOCK)),
+
+    /**
+     * Stateful block backed by {@link ConjureActivatableBlock}: carries a runtime-toggleable
+     * {@code active} on/off state (doors, lamps, switches, safes). Appended LAST so adding it
+     * never shifts the slot indices of earlier archetypes (which persisted blocks reference).
+     * Non-occluding so "open" models with gaps render correctly; light tracks {@code active}.
+     */
+    ACTIVATABLE(80, () -> BlockBehaviour.Properties.of()
+            .mapColor(MapColor.METAL)
+            .strength(2.5f)
+            .sound(SoundType.METAL)
+            .noOcclusion()
+            .lightLevel(state -> state.getBlock() instanceof ConjureActivatableBlock b
+                    ? b.activeLight(state) : 0));
 
     public interface PropFactory {
         BlockBehaviour.Properties create();
