@@ -75,13 +75,12 @@ public class ConjureMenu extends AbstractContainerMenu {
             });
         }
 
-        // Optional fuel slot.
+        // Optional fuel slot — "any" furnace fuel or a specific custom fuel (see WorkbenchRecipe).
         if (hasFuel) {
-            final String fuelId = recipe.fuel();
             this.addSlot(new Slot(blockEntity, ConjureBlockEntity.SLOT_FUEL, FUEL_X, FUEL_Y) {
                 @Override
                 public boolean mayPlace(ItemStack stack) {
-                    return fuelId.isBlank() || idOf(stack).equals(fuelId);
+                    return recipe.fuelAccepts(stack);
                 }
             });
         }

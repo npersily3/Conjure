@@ -3,11 +3,15 @@ package dev.conjure.content.item;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.block.Block;
+
+import java.util.List;
 
 /**
  * A {@link BlockItem} whose display name is resolved at runtime from the backing
@@ -33,5 +37,14 @@ public class ConjureBlockItem extends BlockItem {
     public Component getName(ItemStack stack) {
         SlotDefinition d = SlotRegistry.get(kind, slotIndex);
         return Component.literal(d.configured ? d.displayName : "Empty " + kind + " Slot #" + slotIndex);
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context,
+                                List<Component> tooltip, TooltipFlag flag) {
+        String desc = SlotRegistry.get(kind, slotIndex).str("description", "");
+        if (!desc.isBlank()) {
+            tooltip.add(Component.literal(desc).withStyle(ChatFormatting.GRAY));
+        }
     }
 }

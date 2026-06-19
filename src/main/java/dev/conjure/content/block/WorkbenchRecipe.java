@@ -1,5 +1,8 @@
 package dev.conjure.content.block;
 
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.ItemStack;
+
 import java.util.List;
 
 /**
@@ -14,7 +17,9 @@ import java.util.List;
  * @param inputs      item ids; size 1 for a processor, else {@code gridSize} cells ("" = empty)
  * @param output      output item id
  * @param outputCount how many of {@link #output} per craft (≥ 1)
- * @param fuel        fuel item id consumed per craft, or "" if the recipe needs no fuel
+ * @param fuel        what the fuel slot requires per craft: {@code ""} = no fuel,
+ *                    {@value #FUEL_ANY} = any furnace-burnable item (Minecraft convention), or a
+ *                    specific item id = a custom fuel (e.g. a mod's own battery)
  * @param ticks       processing time in ticks (20 = 1 second)
  */
 public record WorkbenchRecipe(
@@ -27,6 +32,9 @@ public record WorkbenchRecipe(
         String fuel,
         int ticks) {
 
+    /** Sentinel {@link #fuel} value meaning "any furnace-burnable item" (the Minecraft convention). */
+    public static final String FUEL_ANY = "any";
+
     /** A 1-input → 1-output furnace-style processor (no crafting grid). */
     public boolean isProcessor() {
         return gridSize == 0;
@@ -35,5 +43,18 @@ public record WorkbenchRecipe(
     /** Whether this recipe consumes a fuel item to run. */
     public boolean requiresFuel() {
         return fuel != null && !fuel.isBlank();
+    }
+
+    /**
+     * Whether {@code stack} is valid in the fuel slot. {@link #FUEL_ANY} (and {@code "*"}) accept any
+     * furnace-burnable item; anything else requires that exact item id, so a mod can demand a custom
+     * fuel (e.g. its own battery). The single source of truth for both the tick loop and the menu.
+     */
+    public boolean fuelAccepts(ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        if (FUEL_ANY.equalsIgnoreCase(fuel) || "*".equals(fuel)) {
+            return stack.getBurnTime(null) > 0;
+        }
+        return BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().equals(fuel);
     }
 }

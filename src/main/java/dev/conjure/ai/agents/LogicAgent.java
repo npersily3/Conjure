@@ -12,12 +12,15 @@ import dev.conjure.ai.TextModelProvider;
  *
  * <h2>Available ctx API</h2>
  * <pre>
- *   ctx.message(String text)            — sends a chat message to the player
- *   ctx.giveItem(String itemId, int n)  — gives items (e.g. "minecraft:diamond")
- *   ctx.heal(double amount)             — heals the player (2.0 = 1 heart)
- *   ctx.damage(double amount)           — damages the player
- *   ctx.spawnParticleHere()             — spawns a decorative particle burst
- *   ctx.getPlayerName() → String        — returns the player's name
+ *   ctx.message(String text)              — sends a chat message to the player
+ *   ctx.giveItem(String itemId, int n)    — gives items (e.g. "minecraft:diamond")
+ *   ctx.heal(double amount)               — heals the player (2.0 = 1 heart)
+ *   ctx.damage(double amount)             — damages the player
+ *   ctx.giveEffect(id, seconds, amp)      — applies a potion effect (amp 0 = level I)
+ *   ctx.playSound(String soundId)         — plays a sound at the player
+ *   ctx.consumeHeld()                     — consumes one of the held item (single-use)
+ *   ctx.spawnParticleHere()               — spawns a decorative particle burst
+ *   ctx.getPlayerName() → String          — returns the player's name
  * </pre>
  */
 public final class LogicAgent {
@@ -26,17 +29,23 @@ public final class LogicAgent {
             You write Minecraft item right-click behavior scripts for the Conjure mod.
             Scripts run inside a sandboxed Rhino JS engine. The ONLY API available is a global
             object called `ctx` with these methods:
-              ctx.message(text)              — send chat message to player
-              ctx.giveItem(itemId, count)    — give item (e.g. "minecraft:diamond")
-              ctx.heal(amount)               — heal player (2.0 = 1 heart)
-              ctx.damage(amount)             — damage player
-              ctx.spawnParticleHere()        — spawn a particle burst at the player
-              ctx.getPlayerName()            — returns player name as String
+              ctx.message(text)                 — send chat message to player
+              ctx.giveItem(itemId, count)       — give item (e.g. "minecraft:diamond")
+              ctx.heal(amount)                  — heal player (2.0 = 1 heart)
+              ctx.damage(amount)                — damage player
+              ctx.giveEffect(id, seconds, amp)  — apply a potion effect (amp 0 = level I),
+                                                  e.g. ctx.giveEffect("minecraft:speed", 30, 1)
+              ctx.playSound(soundId)            — play a sound, e.g. "minecraft:entity.player.levelup"
+              ctx.consumeHeld()                 — consume one of the held item (single-use items)
+              ctx.spawnParticleHere()           — spawn a particle burst at the player
+              ctx.getPlayerName()               — returns player name as String
             Rules:
             - NO Java imports, NO require(), NO Packages, NO Java interop of any kind.
             - Use ONLY the ctx API above plus standard JS (Math, String, if, for, var/let/const).
             - Keep the script under 20 lines.
-            - Make the behavior interesting and thematically appropriate for the item.
+            - Give the item a REAL effect, not just a chat message: prefer a potion effect, healing,
+              an item reward, particles, and/or a sound that fits the item's theme. Use a chat
+              message only to flavor the real effect, never as the whole behavior.
             - Respond with ONLY the raw JavaScript, NO markdown fences, NO comments about the code.
             """;
 

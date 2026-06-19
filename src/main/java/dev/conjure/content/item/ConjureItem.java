@@ -7,14 +7,18 @@ import dev.conjure.content.SlotRegistry;
 import dev.conjure.script.ScriptContext;
 import dev.conjure.script.ScriptException;
 import dev.conjure.script.ScriptRuntime;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 import org.slf4j.Logger;
+
+import java.util.List;
 
 /**
  * A pre-registered item shell whose identity (name, behavior) is resolved at runtime from
@@ -40,6 +44,15 @@ public class ConjureItem extends Item {
     public Component getName(ItemStack stack) {
         SlotDefinition d = def();
         return Component.literal(d.configured ? d.displayName : "Empty Item Slot #" + slotIndex);
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context,
+                                List<Component> tooltip, TooltipFlag flag) {
+        String desc = def().str("description", "");
+        if (!desc.isBlank()) {
+            tooltip.add(Component.literal(desc).withStyle(ChatFormatting.GRAY));
+        }
     }
 
     @Override

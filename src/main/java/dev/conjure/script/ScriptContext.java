@@ -1,12 +1,17 @@
 package dev.conjure.script;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -125,6 +130,58 @@ public final class ScriptContext {
     public void damage(double amount) {
         if (amount > 0) {
             player.hurt(player.damageSources().magic(), (float) amount);
+        }
+    }
+
+    /**
+     * Apply a potion effect to the player. Unknown effect ids are logged and ignored.
+     *
+     * @param effectId  e.g. {@code "minecraft:regeneration"} or {@code "minecraft:speed"}
+     * @param seconds   duration in seconds (clamped to 1–600)
+     * @param amplifier level minus one (0 = level I, 1 = level II); clamped to 0–4
+     */
+    public void giveEffect(String effectId, int seconds, int amplifier) {
+        ResourceLocation loc = ResourceLocation.tryParse(effectId);
+        if (loc == null) {
+            LOGGER.warn("[Conjure script] giveEffect: invalid id '{}'", effectId);
+            return;
+        }
+        Holder<MobEffect> effect = BuiltInRegistries.MOB_EFFECT.getHolder(loc).orElse(null);
+        if (effect == null) {
+            LOGGER.warn("[Conjure script] giveEffect: unknown effect '{}'", effectId);
+            return;
+        }
+        int ticks = Math.max(1, Math.min(seconds, 600)) * 20;
+        int amp   = Math.max(0, Math.min(amplifier, 4));
+        player.addEffect(new MobEffectInstance(effect, ticks, amp));
+    }
+
+    /**
+     * Play a sound at the player's position (heard by everyone nearby). Unknown ids are ignored.
+     *
+     * @param soundId e.g. {@code "minecraft:block.note_block.bell"} or {@code "entity.player.levelup"}
+     */
+    public void playSound(String soundId) {
+        ResourceLocation loc = ResourceLocation.tryParse(soundId);
+        if (loc == null) {
+            LOGGER.warn("[Conjure script] playSound: invalid id '{}'", soundId);
+            return;
+        }
+        SoundEvent sound = BuiltInRegistries.SOUND_EVENT.get(loc);
+        if (sound == null) {
+            LOGGER.warn("[Conjure script] playSound: unknown sound '{}'", soundId);
+            return;
+        }
+        level.playSound(null, player.blockPosition(), sound, SoundSource.PLAYERS, 1.0f, 1.0f);
+    }
+
+    /**
+     * Consume one of the held (interacting) item — lets a script make a single-use consumable.
+     * Creative-mode players are unaffected (vanilla doesn't shrink their held stack here).
+     */
+    public void consumeHeld() {
+        if (!player.getAbilities().instabuild) {
+            player.getItemInHand(hand).shrink(1);
         }
     }
 }

@@ -87,8 +87,20 @@ public final class MachineAgent {
                                ["minecraft:clay_ball"]); pick ingredients that fit the theme.
               "output"       — the vanilla item id produced.
               "output_count" — integer 1–64 produced per craft.
-              "fuel"         — optional fuel item id (e.g. "minecraft:coal"); "" if none.
+              "fuel"         — how the block is powered:
+                                 ""      — no fuel needed.
+                                 "any"   — burns ordinary fuel; use for a normal furnace/kiln/
+                                           smelter/oven (the Minecraft convention: coal, charcoal,
+                                           planks, blaze rods… all work).
+                                 "<id>"  — requires EXACTLY this item, for a machine designed to run
+                                           on a SPECIFIC custom fuel (e.g. "minecraft:redstone" for
+                                           a powered machine, or a themed battery/crystal).
+                               Prefer "any" for fire/heat stations; only name a specific item when
+                               the machine is meant to consume that particular thing.
               "ticks"        — processing time in ticks (20 = 1 second; typical 60–200).
+
+            Make the recipe the REASON to build this block: prefer thematic, on-flavor
+            ingredients and a desirable output players would seek this station out for.
 
             Reply with ONLY a JSON object (no prose, no markdown fences):
             {
@@ -102,7 +114,12 @@ public final class MachineAgent {
             For plain/script, all fields besides "interaction" may be omitted.
             """;
 
-    /** Focused prompt used to (re)derive a recipe once a block is known to be a workbench. */
+    /**
+     * Focused prompt used to (re)derive a recipe once a block is known to be a workbench.
+     * ponytail: the "make this the reason to craft the signature item" line is a prompt-only
+     * nudge. Real per-item routing (custom item ids wired as this workbench's output) needs the
+     * structured ModPlanner plan; upgrade there if the nudge proves too weak.
+     */
     private static final String RECIPE_SYSTEM = """
             You design the crafting/processing recipe for a Minecraft "workbench" block from the
             Conjure mod. Given the block's description, choose what it consumes and produces using
@@ -115,7 +132,11 @@ public final class MachineAgent {
               "fuel": "",
               "ticks": 100
             }
-            Use 1 to 9 ingredients and one output, thematically matching the block.
+            Use 1 to 9 ingredients and one output, thematically matching the block. Make this
+            station the REASON players craft the mod's signature item: prefer on-flavor
+            ingredients and a desirable output worth building the block for.
+            "fuel": "" for no fuel, "any" for a normal fire-powered station (burns ordinary fuel),
+            or a specific item id when the machine must run on that exact custom fuel.
             """;
 
     /**

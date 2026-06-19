@@ -232,10 +232,11 @@ public class ConjureBlockEntity extends BlockEntity implements Container, MenuPr
             if (stack.isEmpty() || !matches(stack, reqs.get(i))) { be.resetProgress(); return; }
         }
 
-        // Fuel gate.
+        // Fuel gate. recipe.fuelAccepts handles both modes: "any" = any furnace fuel (charcoal,
+        // planks, blaze rod…), or a specific id = a custom fuel the machine demands (e.g. a battery).
         if (recipe.requiresFuel()) {
             ItemStack fuel = be.items.get(SLOT_FUEL);
-            if (fuel.isEmpty() || !matches(fuel, recipe.fuel())) { be.resetProgress(); return; }
+            if (!recipe.fuelAccepts(fuel)) { be.resetProgress(); return; }
         }
 
         // Output room.

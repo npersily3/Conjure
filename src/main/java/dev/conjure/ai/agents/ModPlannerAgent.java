@@ -52,6 +52,9 @@ public final class ModPlannerAgent {
               necessary — a generous, content-rich mod is better than a sparse one.
             - Keep each piece prompt concise (3–8 words) and unambiguous.
             - Cover a mix of content types when the concept warrants it.
+            - When the mod includes a workstation/machine block (a station, kiln, press, mill,
+              altar, etc.), center the mod on it: include the raw-material pieces it consumes and
+              the signature item it produces, so that machine is the intended way to craft them.
             - Never repeat the same concept twice.
             Schema:
             {
