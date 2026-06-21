@@ -15,17 +15,25 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Singleton that loads, caches, and sandboxed-executes Conjure behavior scripts.
+ * Singleton that loads, caches, and sandboxed-executes Conjure behavior scripts
+ * and named reusable effects.
  *
  * <h2>Sandbox design</h2>
  * <ul>
- *   <li><b>ClassShutter</b> — denies every Java class except the {@link ScriptContext}
- *       bridge, so scripts cannot import or access any other Java class via {@code Packages.*}
- *       or reflection. The bridge must be visible for Rhino to wrap the {@code ctx} object;
- *       it is the only Java object reachable from a script.</li>
+ *   <li><b>ClassShutter</b> — allowlist: the {@link ScriptContext} bridge, any class whose
+ *       canonical name starts with {@code "net.minecraft."}, and a small set of safe Java
+ *       primitives ({@link #SAFE_JAVA_CLASSES}). All other classes are denied, including
+ *       {@code java.lang.Class}, {@code java.lang.Runtime}, {@code System}, {@code Thread},
+ *       {@code java.lang.reflect.*}, and {@code java.io.*}.
+ *       // ponytail: net.minecraft.* is a broad grant; a script can traverse to
+ *       // level.getServer() from ctx.getLevel(). Acceptable for singleplayer untrusted
+ *       // AI code where the player is also the server operator.  If server-sync ever
+ *       // lands, tighten to a per-class denylist covering dangerous server state.
+ *   </li>
  *   <li><b>WrapFactory</b> — {@code setJavaPrimitiveWrap(false)} so primitive numbers/
  *       strings are not wrapped into Java objects, keeping the script in JS-land.</li>
  *   <li><b>Interpreted mode</b> — {@code setOptimizationLevel(-1)} disables bytecode
@@ -59,6 +67,46 @@ public final class ScriptRuntime {
     private ScriptRuntime() {}
 
     // -------------------------------------------------------------------------
+    // Allowlisted Java class names (beyond ScriptContext + net.minecraft.*)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Safe Java classes that scripts may reference directly (via Rhino's class-access path).
+     * Primitives and math only — no IO, no reflection, no thread management.
+     */
+    private static final Set<String> SAFE_JAVA_CLASSES = Set.of(
+            "java.lang.String",
+            "java.lang.Object",
+            "java.lang.Number",
+            "java.lang.Integer",
+            "java.lang.Double",
+            "java.lang.Float",
+            "java.lang.Long",
+            "java.lang.Boolean",
+            "java.lang.Math",
+            "java.lang.CharSequence"
+    );
+
+    private static final String CTX_CLASS_NAME = ScriptContext.class.getName();
+
+    /**
+     * Allowlist shutter: passes the ScriptContext bridge, any net.minecraft.* class
+     * (so raw MC objects returned by ctx accessors are usable), and the small set of
+     * safe Java primitives above. Denies everything else.
+     */
+    private static final ClassShutter SHUTTER = className ->
+            CTX_CLASS_NAME.equals(className)
+            || className.startsWith("net.minecraft.")
+            || SAFE_JAVA_CLASSES.contains(className);
+
+    /** Prevents primitive wrapping so numbers/strings stay as JS types. */
+    private static final WrapFactory SAFE_WRAP_FACTORY = new WrapFactory() {
+        {
+            setJavaPrimitiveWrap(false);
+        }
+    };
+
+    // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
 
@@ -81,7 +129,36 @@ public final class ScriptRuntime {
         }
 
         Script script = loadCompiled(scriptId, scriptFile);
+        execScript(scriptId, script, ctx);
+    }
 
+    /**
+     * Resolve and execute a named reusable <em>effect</em> script against an existing ctx.
+     * Effect scripts live at {@code <gamedir>/conjure/generated/effects/<name>.js} and share
+     * the same sandbox and budget as behavior scripts.
+     *
+     * <p>// ponytail: the nested run re-enters a fresh Rhino Context so the instruction
+     * budget resets per effect — fine for one nesting level; deep recursion would multiply.
+     *
+     * @param name the effect name (no extension, no path components)
+     * @param ctx  the context to inject — typically the outer script's ctx
+     * @throws ScriptException if the effect file cannot be found/read or throws at runtime
+     */
+    public void runEffect(String name, ScriptContext ctx) throws ScriptException {
+        Path effectFile = effectPath(name);
+        if (!Files.exists(effectFile)) {
+            throw new ScriptException("Effect file not found: " + effectFile);
+        }
+        Script script = loadCompiled("effect:" + name, effectFile);
+        execScript("effect:" + name, script, ctx);
+    }
+
+    // -------------------------------------------------------------------------
+    // Internals
+    // -------------------------------------------------------------------------
+
+    /** Executes a precompiled script in a fresh Rhino context. */
+    private void execScript(String displayId, Script script, ScriptContext ctx) throws ScriptException {
         SandboxContextFactory factory = new SandboxContextFactory();
         Context rhinoCtx = factory.enterContext();
         try {
@@ -93,17 +170,13 @@ public final class ScriptRuntime {
             Scriptable scope = buildScope(rhinoCtx, ctx);
             script.exec(rhinoCtx, scope);
         } catch (ScriptInstructionBudgetExceeded e) {
-            throw new ScriptException("Script '" + scriptId + "' exceeded instruction budget (possible infinite loop)");
+            throw new ScriptException("Script '" + displayId + "' exceeded instruction budget (possible infinite loop)");
         } catch (Exception e) {
-            throw new ScriptException("Script '" + scriptId + "' threw: " + e.getMessage(), e);
+            throw new ScriptException("Script '" + displayId + "' threw: " + e.getMessage(), e);
         } finally {
             Context.exit();
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Internals
-    // -------------------------------------------------------------------------
 
     /** Returns the canonical path for a behavior script file. */
     private static Path scriptPath(String scriptId) {
@@ -114,11 +187,20 @@ public final class ScriptRuntime {
                 .resolve(scriptId + ".js");
     }
 
+    /** Returns the canonical path for a reusable effect script file. */
+    private static Path effectPath(String name) {
+        return FMLPaths.GAMEDIR.get()
+                .resolve("conjure")
+                .resolve("generated")
+                .resolve("effects")
+                .resolve(name + ".js");
+    }
+
     /**
      * Returns a compiled {@link Script} for the given file, using the cache when the
      * file's last-modified timestamp has not changed since the last compilation.
      */
-    private Script loadCompiled(String scriptId, Path scriptFile) throws ScriptException {
+    private Script loadCompiled(String cacheId, Path scriptFile) throws ScriptException {
         long mtime;
         try {
             mtime = Files.getLastModifiedTime(scriptFile).toMillis();
@@ -126,7 +208,7 @@ public final class ScriptRuntime {
             throw new ScriptException("Cannot stat script file: " + scriptFile, e);
         }
 
-        String cacheKey = scriptId + ":" + mtime;
+        String cacheKey = cacheId + ":" + mtime;
         Script cached = compiledCache.get(cacheKey);
         if (cached != null) {
             return cached;
@@ -145,9 +227,9 @@ public final class ScriptRuntime {
         try {
             rhinoCtx.setOptimizationLevel(-1);
             rhinoCtx.setClassShutter(SHUTTER);
-            Script compiled = rhinoCtx.compileString(source, scriptId + ".js", 1, null);
-            // Evict stale keys for this scriptId before inserting the new one.
-            compiledCache.entrySet().removeIf(e -> e.getKey().startsWith(scriptId + ":"));
+            Script compiled = rhinoCtx.compileString(source, cacheId + ".js", 1, null);
+            // Evict stale keys for this cacheId before inserting the new one.
+            compiledCache.entrySet().removeIf(e -> e.getKey().startsWith(cacheId + ":"));
             compiledCache.put(cacheKey, compiled);
             return compiled;
         } finally {
@@ -157,38 +239,15 @@ public final class ScriptRuntime {
 
     /**
      * Build a restricted top-level scope that only exposes {@code ctx}.
-     * We deliberately do NOT call {@link ScriptableObject#initStandardObjects(Context)}
-     * (which would add Java bridges), nor do we seal the scope — sealing prevents
-     * scripts from defining their own variables, which breaks normal JS patterns.
+     * {@link ScriptableObject#initSafeStandardObjects} creates the standard JS built-ins
+     * (Math, Array, String, JSON, …) with the scope sealed so scripts cannot replace them.
      */
     private static Scriptable buildScope(Context rhinoCtx, ScriptContext ctx) {
-        // initSafeStandardObjects creates the standard JS built-ins (Math, Array,
-        // String, JSON, …) but seals the scope so scripts cannot replace them.
         ScriptableObject scope = rhinoCtx.initSafeStandardObjects();
-        // Wrap the Java ScriptContext into a JS object and bind it as "ctx".
         Object wrappedCtx = Context.javaToJS(ctx, scope);
         ScriptableObject.putProperty(scope, "ctx", wrappedCtx);
         return scope;
     }
-
-    // -------------------------------------------------------------------------
-    // Sandbox helpers — stateless, safe as constants
-    // -------------------------------------------------------------------------
-
-    /**
-     * Allows ONLY the {@link ScriptContext} bridge class; denies every other Java class.
-     * The bridge itself must be visible or Rhino cannot wrap the {@code ctx} object it exposes
-     * (it would throw "Access to Java class … is prohibited" the instant {@code ctx} is bound).
-     */
-    private static final String CTX_CLASS_NAME = ScriptContext.class.getName();
-    private static final ClassShutter SHUTTER = className -> CTX_CLASS_NAME.equals(className);
-
-    /** Prevents primitive wrapping so numbers/strings stay as JS types. */
-    private static final WrapFactory SAFE_WRAP_FACTORY = new WrapFactory() {
-        {
-            setJavaPrimitiveWrap(false);
-        }
-    };
 
     // -------------------------------------------------------------------------
     // ContextFactory — installs the instruction-count observer

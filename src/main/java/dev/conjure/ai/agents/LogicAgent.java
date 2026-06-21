@@ -12,68 +12,123 @@ import dev.conjure.ai.TextModelProvider;
  *
  * <h2>Available ctx API</h2>
  * <pre>
+ *   // trigger (what caused this script to run)
+ *   ctx.trigger()                             — "use" | "useOnBlock" | "hitEntity" | "swing"
+ *
+ *   // raw Minecraft object accessors — returns real MC objects; call any MC API on them
+ *   ctx.getLevel()                            — net.minecraft.world.level.Level
+ *   ctx.getPlayer()                           — net.minecraft.world.entity.player.Player
+ *   ctx.getTargetEntity()                     — net.minecraft.world.entity.LivingEntity or null
+ *   ctx.getTargetPos()                        — net.minecraft.core.BlockPos or null
+ *   ctx.getHand()                             — net.minecraft.world.InteractionHand
+ *
+ *   // generic velocity (replaces launch / dashForward)
+ *   ctx.applyVelocity(x, y, z)               — impulse added to player delta movement
+ *
  *   // messaging / player
- *   ctx.message(text) · ctx.getPlayerName() · ctx.giveItem(id,n) · ctx.consumeHeld()
- *   ctx.heal(amt) · ctx.damage(amt) · ctx.giveEffect(id,sec,amp) · ctx.ignite(sec)
- *   // movement
- *   ctx.launch(power) · ctx.dashForward(power)
- *   // world effects
- *   ctx.lightning() · ctx.explode(power) · ctx.playSound(id) · ctx.spawnParticleHere()
- *   // combat (only when a mob was hit)
- *   ctx.hasTargetEntity() · ctx.damageTarget(amt) · ctx.igniteTarget(sec)
- *   ctx.knockbackTarget(power) · ctx.effectTarget(id,sec,amp)
- *   // target block (only when used on / by a block) — drives doors/lamps/safes
- *   ctx.hasTargetBlock() · ctx.getBlockActive() · ctx.setBlockActive(bool)
- *   ctx.breakTargetBlock() · ctx.setTargetBlock(id) · ctx.placeOnFace(id)
+ *   ctx.message(text)                         — chat message to the player
+ *   ctx.getPlayerName()                       — player name as String
+ *   ctx.giveItem(itemId, count)               — e.g. "minecraft:diamond"
+ *   ctx.consumeHeld()                         — consume one of the held item (single-use)
+ *   ctx.heal(amount) / ctx.damage(amount)     — 2.0 = 1 heart
+ *   ctx.giveEffect(id, seconds, amp)          — potion effect (amp 0 = level I)
+ *   ctx.playSound(soundId)                    — e.g. "minecraft:entity.player.levelup"
+ *
+ *   // target entity (only when trigger is "hitEntity")
+ *   ctx.hasTargetEntity()                     — true if a mob was hit
+ *
+ *   // target block (only when trigger is "useOnBlock" or block's own script)
+ *   ctx.hasTargetBlock()                      — true if there is a target block
+ *   ctx.getBlockActive() / ctx.setBlockActive(bool)   — read/toggle a door/lamp/safe
+ *   ctx.breakTargetBlock() / ctx.setTargetBlock(id) / ctx.placeOnFace(id)
+ *
  *   // cross-object tunables (key↔safe matching)
- *   ctx.heldStr(key) · ctx.heldNum(key) · ctx.targetBlockStr(key) · ctx.targetBlockNum(key)
+ *   ctx.heldStr(key) / ctx.heldNum(key)
+ *   ctx.targetBlockStr(key) / ctx.targetBlockNum(key)
+ *
+ *   // reusable named effects (runs effects/<name>.js against this ctx)
+ *   ctx.applyEffect(name)
  * </pre>
  */
 public final class LogicAgent {
 
     private static final String SYSTEM = """
-            You write Minecraft behavior scripts for the Conjure mod. A script runs when the item is
-            right-clicked in the air, right-clicked ON A BLOCK, or used to HIT A MOB — so target-aware
-            verbs no-op safely when their target is absent; guard them with the has* checks.
-            Scripts run in a sandboxed Rhino JS engine. The ONLY API is a global object `ctx`:
-              ctx.message(text)                 — chat message to the player
-              ctx.giveItem(itemId, count)       — give item (e.g. "minecraft:diamond")
-              ctx.heal(amount) / ctx.damage(amount)        — heal / hurt player (2.0 = 1 heart)
-              ctx.giveEffect(id, seconds, amp)  — potion effect (amp 0 = level I)
-              ctx.ignite(seconds)               — set the player on fire
-              ctx.launch(power)                 — fling the player upward (power 0–4)
-              ctx.dashForward(power)            — dash in the look direction (power 0–4)
-              ctx.lightning()                   — strike lightning at the player
-              ctx.explode(power)                — explosion that hurts mobs but breaks NO blocks (0–8)
-              ctx.playSound(soundId)            — e.g. "minecraft:entity.player.levelup"
-              ctx.spawnParticleHere()           — particle burst at the player
-              ctx.getPlayerName()               — player name as String
-              ctx.consumeHeld()                 — consume one of the held item (single-use)
-              // combat — only meaningful when this hit a mob:
-              ctx.hasTargetEntity()             — true if a mob was hit
-              ctx.damageTarget(amount) / ctx.igniteTarget(sec) / ctx.knockbackTarget(power)
-              ctx.effectTarget(id, seconds, amp)
-              // blocks — only meaningful when used on / by a block:
-              ctx.hasTargetBlock()              — true if there is a target block
-              ctx.getBlockActive() / ctx.setBlockActive(true|false)  — read/toggle a door/lamp/safe
-              ctx.breakTargetBlock() / ctx.setTargetBlock(blockId) / ctx.placeOnFace(blockId)
-              // cross-object data (for keys, wands that react to blocks):
+            You write Minecraft behavior scripts for the Conjure mod. Scripts are executed in a
+            sandboxed Rhino JS engine on the server. The ONLY API is a global object `ctx`.
+
+            TRIGGER — check ctx.trigger() to know why the script is running:
+              "use"        — player right-clicked in air
+              "useOnBlock" — player right-clicked on a block
+              "hitEntity"  — weapon hit a living entity
+              "swing"      — player left-clicked in empty air
+
+            RAW MINECRAFT ACCESSORS — return real net.minecraft objects; call any MC API on them:
+              ctx.getLevel()                   — Level (cast to ServerLevel for spawning)
+              ctx.getPlayer()                  — Player
+              ctx.getTargetEntity()            — LivingEntity or null (non-null on hitEntity)
+              ctx.getTargetPos()               — BlockPos or null (non-null on useOnBlock)
+              ctx.getHand()                    — InteractionHand
+
+            GENERIC VELOCITY (replaces old launch/dashForward):
+              ctx.applyVelocity(x, y, z)       — add impulse to player movement
+
+            HELPER VERBS (high-level convenience):
+              ctx.message(text)                — chat message to the player
+              ctx.getPlayerName()              — player name as String
+              ctx.giveItem(itemId, count)      — give item (e.g. "minecraft:diamond")
+              ctx.heal(amount) / ctx.damage(amount)  — 2.0 = 1 heart
+              ctx.giveEffect(id, seconds, amp)       — potion effect (amp 0 = level I)
+              ctx.playSound(soundId)           — e.g. "minecraft:entity.player.levelup"
+              ctx.consumeHeld()                — consume one of the held item (single-use)
+              ctx.hasTargetEntity()            — true if a mob was hit
+              ctx.hasTargetBlock()             — true if there is a target block
+              ctx.getBlockActive() / ctx.setBlockActive(bool)   — read/toggle a door/lamp/safe
+              ctx.breakTargetBlock() / ctx.setTargetBlock(id) / ctx.placeOnFace(id)
               ctx.heldStr(key) / ctx.heldNum(key)               — tunables on the held item
               ctx.targetBlockStr(key) / ctx.targetBlockNum(key) — tunables on the target block
-            KEY / UNLOCKING items: a lockable Conjure block carries a non-empty "keyId". To unlock,
-            check the block then open it, e.g.:
+              ctx.applyEffect(name)            — run a named reusable effect script
+
+            KEY / UNLOCKING items: a lockable Conjure block carries a non-empty "keyId". Example:
               if (ctx.hasTargetBlock() && ctx.targetBlockStr("keyId") !== "") {
                 ctx.setBlockActive(true); ctx.message("The lock clicks open.");
                 ctx.playSound("minecraft:block.chest.open");
               }
-            For a key that fits only ITS matching safe, compare ids instead:
-              ctx.targetBlockStr("keyId") === ctx.heldStr("keyId").
+
+            EXAMPLE — summon a lightning bolt at the player using raw MC API:
+              var sl = ctx.getLevel();
+              var p = ctx.getPlayer();
+              var bolt = net.minecraft.world.entity.EntityType.LIGHTNING_BOLT.create(sl);
+              if (bolt) { bolt.moveTo(p.getX(), p.getY(), p.getZ()); sl.addFreshEntity(bolt); }
+
+            EXAMPLE — area knockback on swing (push nearby mobs away):
+              if (ctx.trigger() === "swing") {
+                var p = ctx.getPlayer();
+                var level = ctx.getLevel();
+                var nearby = level.getEntities(p, p.getBoundingBox().inflate(5));
+                for (var i = 0; i < nearby.size(); i++) {
+                  var e = nearby.get(i);
+                  if (e !== p) e.knockback(2, p.getX()-e.getX(), p.getZ()-e.getZ());
+                }
+                ctx.playSound("minecraft:entity.player.attack.sweep");
+              }
+
+            EXAMPLE — spawn a phantom on right-click:
+              var sl = ctx.getLevel();
+              var p = ctx.getPlayer();
+              var phantom = net.minecraft.world.entity.EntityType.PHANTOM.create(sl);
+              if (phantom) {
+                phantom.moveTo(p.getX(), p.getY()+3, p.getZ());
+                sl.addFreshEntity(phantom);
+                ctx.message("A phantom answers your call.");
+              }
+
             Rules:
-            - NO Java imports, NO require(), NO Packages, NO Java interop of any kind.
+            - NO Java imports, NO require(), NO Packages, NO Java interop with disallowed classes.
+            - Allowed extra classes: net.minecraft.* (already accessible via raw accessors).
             - Use ONLY the ctx API above plus standard JS (Math, String, if, for, var/let/const).
             - Keep the script under 25 lines.
-            - Give a REAL effect that fits the item's theme (an effect, reward, motion, combat hit,
-              or block interaction) — a chat message may flavor it but is never the whole behavior.
+            - Give a REAL gameplay effect that fits the item's theme — chat message may flavor it
+              but is never the whole behavior.
             - Respond with ONLY the raw JavaScript, NO markdown fences, NO comments about the code.
             """;
 
@@ -86,7 +141,7 @@ public final class LogicAgent {
      */
     public String generate(String prompt) throws Exception {
         TextModelProvider provider = ProviderFactory.text();
-        String userMsg = "Write a right-click behavior script for this Minecraft item: " + prompt;
+        String userMsg = "Write a behavior script for this Minecraft item: " + prompt;
         String raw = provider.complete(SYSTEM, userMsg);
 
         // Strip common markdown code fences if present — scripts are plain JS, not JSON,
