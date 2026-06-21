@@ -34,6 +34,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue INTERACTIVITY_ENABLED;
     public static final ModConfigSpec.BooleanValue RECIPES_ENABLED;
     public static final ModConfigSpec.BooleanValue AUTO_INSTALL_BACKENDS;
+    public static final ModConfigSpec.BooleanValue SHOW_INTENT;
 
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -80,6 +81,11 @@ public final class Config {
                 "(Ollama + the local text model, and ComfyUI + a checkpoint). Windows-only for now;",
                 "downloads land under <gamedir>/conjure/runtime/. Set false to manage them yourself.")
                 .define("autoInstallBackends", true);
+        SHOW_INTENT = b.comment(
+                "DEV/DEBUG: append the generated visual + usage intent (in red) to every conjured",
+                "block/item tooltip. Lets you tell a texture/model failure (texture ≠ visual intent)",
+                "from a behavior gap (the code can't do what the usage intent describes). Off for release.")
+                .define("showIntent", true);
         b.pop();
 
         SPEC = b.build();

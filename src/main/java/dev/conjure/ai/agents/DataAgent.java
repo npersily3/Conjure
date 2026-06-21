@@ -29,6 +29,10 @@ public final class DataAgent {
             {
               "displayName": "<short title-cased name, max 4 words>",
               "description": "<one sentence flavour text, max 20 words>",
+              "visualIntent": "<what the TEXTURE/MODEL should DEPICT — colours, shape, motifs; what a
+                               player should SEE. Max 20 words. Visual only, no behaviour.>",
+              "usageIntent": "<what the thing should DO in-game — its effect, interaction, or function.
+                              Max 20 words. Behaviour only, no looks. "Decorative, no function." if none.>",
               "isMaterial": <true only if this is a solid building/decorative BLOCK material like
                              stone, marble, brick, wood, metal block; false for items, tools, ores,
                              machines, plants, glass, magical orbs, etc.>,
@@ -41,12 +45,15 @@ public final class DataAgent {
     /**
      * Result record returned to the orchestrator.
      *
-     * @param displayName player-facing name
-     * @param description short flavour description stored in {@code strings.get("description")}
-     * @param isMaterial  true if this is a building-material block eligible for family expansion
-     * @param variants    requested shaped variants (subset of {@link #KNOWN_VARIANTS}); empty if none
+     * @param displayName  player-facing name
+     * @param description  short flavour description stored in {@code strings.get("description")}
+     * @param visualIntent what the texture/model should depict (debug overlay; falls back to prompt)
+     * @param usageIntent  what the thing should do in-game (debug overlay; falls back to prompt)
+     * @param isMaterial   true if this is a building-material block eligible for family expansion
+     * @param variants     requested shaped variants (subset of {@link #KNOWN_VARIANTS}); empty if none
      */
-    public record Result(String displayName, String description, boolean isMaterial, Set<String> variants) {}
+    public record Result(String displayName, String description, String visualIntent,
+                         String usageIntent, boolean isMaterial, Set<String> variants) {}
 
     /**
      * Calls the text model to produce a name and description for {@code prompt}.
@@ -64,6 +71,13 @@ public final class DataAgent {
         String name = obj.has("displayName") ? obj.get("displayName").getAsString() : "Conjured Item";
         String desc = obj.has("description") ? obj.get("description").getAsString() : "";
 
+        // Intents power the debug overlay; if the (often weak local) model omits them, fall back to
+        // the raw prompt so the overlay is never blank.
+        String visual = obj.has("visualIntent") ? obj.get("visualIntent").getAsString().trim() : "";
+        String usage  = obj.has("usageIntent")  ? obj.get("usageIntent").getAsString().trim()  : "";
+        if (visual.isBlank()) visual = prompt;
+        if (usage.isBlank())  usage  = prompt;
+
         boolean isMaterial = obj.has("isMaterial") && obj.get("isMaterial").getAsBoolean();
         Set<String> variants = new LinkedHashSet<>();
         if (isMaterial && obj.has("variants") && obj.get("variants").isJsonArray()) {
@@ -73,7 +87,7 @@ public final class DataAgent {
                 if (KNOWN_VARIANTS.contains(v)) variants.add(v);
             }
         }
-        return new Result(name, desc, isMaterial, variants);
+        return new Result(name, desc, visual, usage, isMaterial, variants);
     }
 
     public DataAgent() {}

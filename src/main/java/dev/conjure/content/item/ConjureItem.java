@@ -57,10 +57,12 @@ public class ConjureItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, Item.TooltipContext context,
                                 List<Component> tooltip, TooltipFlag flag) {
-        String desc = def().str("description", "");
+        SlotDefinition d = def();
+        String desc = d.str("description", "");
         if (!desc.isBlank()) {
             tooltip.add(Component.literal(desc).withStyle(ChatFormatting.GRAY));
         }
+        dev.conjure.content.IntentTooltip.append(d, tooltip);
     }
 
     /** Right-click in the air: runs the behavior script with no block/entity target. */

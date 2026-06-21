@@ -9,6 +9,7 @@ import dev.conjure.ai.agents.LogicAgent;
 import dev.conjure.ai.agents.MachineAgent;
 import dev.conjure.ai.agents.RecipeAgent;
 import dev.conjure.ai.agents.TextureAgent;
+import dev.conjure.content.IntentTooltip;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
@@ -171,6 +172,8 @@ public final class BlockPipeline implements GenerationPipeline {
         def.sourcePrompt = prompt;
         def.texturePath  = "conjure:block/block_slot_" + slot;
         def.strings.put("description", data.description());
+        def.strings.put(IntentTooltip.VISUAL, data.visualIntent());
+        def.strings.put(IntentTooltip.USAGE, data.usageIntent());
 
         switch (machineResult.kind()) {
             case WORKBENCH -> {
@@ -284,6 +287,8 @@ public final class BlockPipeline implements GenerationPipeline {
         def.sourcePrompt = prompt;
         def.texturePath  = "conjure:block/block_slot_" + slot;
         def.strings.put("description", data.description());
+        def.strings.put(IntentTooltip.VISUAL, data.visualIntent());
+        def.strings.put(IntentTooltip.USAGE, data.usageIntent());
 
         switch (result.kind()) {
             case WORKBENCH -> {
@@ -443,6 +448,8 @@ public final class BlockPipeline implements GenerationPipeline {
         def.behaviorScriptId = "";
         def.strings.put("description", desc);
         def.strings.put("interaction", "plain");
+        def.strings.put(IntentTooltip.VISUAL, prompt);
+        def.strings.put(IntentTooltip.USAGE, "Decorative building material.");
         PipelineSupport.commitQuiet(def);
     }
 

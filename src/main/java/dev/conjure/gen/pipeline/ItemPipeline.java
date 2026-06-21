@@ -6,6 +6,7 @@ import dev.conjure.ai.TextureKind;
 import dev.conjure.ai.agents.DataAgent;
 import dev.conjure.ai.agents.LogicAgent;
 import dev.conjure.ai.agents.TextureAgent;
+import dev.conjure.content.IntentTooltip;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
@@ -56,6 +57,8 @@ public final class ItemPipeline implements GenerationPipeline {
         def.texturePath      = "conjure:item/item_slot_" + slot;
         def.behaviorScriptId = scriptId;
         def.strings.put("description", data.description());
+        def.strings.put(IntentTooltip.VISUAL, data.visualIntent());
+        def.strings.put(IntentTooltip.USAGE, data.usageIntent());
 
         PipelineSupport.commit(def);
 

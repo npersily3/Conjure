@@ -31,6 +31,11 @@ dates are omitted until a release cadence exists.
   a key that fits only its safe (`ctx.targetBlockStr("keyId") === ctx.heldStr("keyId")`).
 - `DynamicPackManager.writeActivatableAssets` — two textures (off/on) + a two-variant blockstate.
 - `slotDef()` accessors on `ConjureItem` / `ConjureBlockItem` for cross-object script reads.
+- **Intent debug overlay.** `DataAgent` now emits a split `visualIntent` (what it should depict) and
+  `usageIntent` (what it should do); both are stored per slot and, when `features.showIntent` is on
+  (default on), appended in red to every conjured block/item tooltip via `IntentTooltip`. Lets you
+  tell a texture/model failure (texture ≠ visual intent) from a behavior gap (code can't do the usage
+  intent). Falls back to the raw prompt when a weak model omits the fields.
 
 ### Changed
 - `LogicAgent` prompt documents the full expanded `ctx` API and the key/unlock pattern.

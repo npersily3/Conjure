@@ -14,6 +14,7 @@ The sub-packages contain the concrete shell classes for each content kind.
 | `SlotKind.java` | Enum of the content families: `ITEM`, `BLOCK`, `FLUID`, `ENTITY`, `STRUCTURE`, plus the shaped building-block variants `SLAB`, `STAIRS`, `WALL` (derived from a base block during material-family generation). First dimension of the `SlotRegistry` key. |
 | `SlotDefinition.java` | Mutable runtime description of a pre-registered slot: `displayName`, `texturePath`, `behaviorScriptId`, `sourcePrompt`, plus open-ended `numbers` and `strings` maps for extra data. When `configured == false` the slot is still an empty placeholder. |
 | `SlotRegistry.java` | Concurrent `(SlotKind, index) → SlotDefinition` map. `put(def)` swaps a fully-built definition atomically; `firstFree(kind, poolSize)` finds the lowest unconfigured slot for new generation. |
+| `IntentTooltip.java` | Dev/debug overlay. Appends the generated `intentVisual` / `intentUsage` strings (in red) to a configured slot's tooltip when `Config.SHOW_INTENT` is on — so a texture that doesn't match the visual intent points at the asset pipeline, and a behavior that doesn't match the usage intent points at the code. Used by `ConjureItem` / `ConjureBlockItem`. |
 
 ## Sub-packages
 
