@@ -72,8 +72,14 @@ single message. This only works when Claude was started from the repo root (so w
 created). Follow `docs/PARALLEL_AGENTS.md`: disjoint ownership lanes, frozen shared contracts
 (`SlotKind`/`SlotDefinition`/`SlotRegistry`/`Config`), seams defined before spawning, each agent
 compiles its own worktree, parent merges + does one clean compile + commits.
+- **CAUTION (learned the hard way):** worktree lanes may branch from the repo's **default branch
+  (`master`)**, not your current HEAD. Before integrating, check `git merge-base HEAD <lane>` — if the
+  lanes did NOT branch from your working HEAD, a blind merge will *revert* HEAD-only work. In that
+  case integrate by **porting each lane's new feature onto HEAD** (cherry-pick clean/new files, hand-
+  apply patches to files HEAD also changed) instead of merging the branch wholesale.
 
 ## Conventions for working here
 - Commit/branch only when asked. Don't skip hooks.
 - Keep changes compiling; run `./gradlew compileJava` before declaring done.
 - Every source folder has a `README.md` listing its files and their purpose. When you add, remove, or repurpose a file, update that folder's `README.md` in the same change; when you create a new folder, add its `README.md`.
+- **Big changes must update the documentation and installation sections in the same change** — especially anything touching the **ComfyUI / model backend** (which checkpoint to download, where it goes, how to point `Config` at it). Doc/install drift on the backend is a release blocker.

@@ -39,6 +39,23 @@ generation pipeline. You can even ask for a whole mod at once.
   (default `v1-5-pruned-emaonly.safetensors`). If no image server is reachable, Conjure **falls
   back** to having the text model emit pixel-art — so everything still works, the icons are just
   simpler.
+
+#### Texture quality — use a pixel-art checkpoint
+Base **SD 1.5** (`v1-5-pruned-emaonly`) does not understand "flat, tileable, top-down" and renders
+detailed 3-D *scenes*, so blocks come out looking like little dioramas. The image pipeline already
+mitigates this (blocks are rendered at low native resolution, hard-downscaled to 16×16, made
+seamlessly tileable, and palette-quantized; fluids use a dedicated tileable-liquid prompt), but the
+**single biggest quality win is the checkpoint**:
+
+1. Download a **pixel-art** SD1.5 checkpoint (e.g. *All-In-One-Pixel-Model*, or any "pixel art"
+   checkpoint/merge from Civitai) into `ComfyUI/models/checkpoints/`.
+2. Set `[image] fastModel` (and `highModel`) in the config to that filename. The workflow loads it
+   via `CheckpointLoaderSimple`, so no other change is needed.
+3. Restart generation (`/conjure new …`). Item icons get clean transparent backgrounds (alpha is
+   masked automatically); blocks/fluids become flat, readable, tileable surfaces.
+
+> If you switch to an **SDXL**-based pixel-art model, raise `BLOCK_NATIVE_SIZE` in
+> `ai/ComfyUIProvider.java` from 64 to ≥256 (SDXL's VAE minimum); the 16×16 downscale still applies.
 - **GeckoLib** (entity models) is a required mod dependency; in the dev workspace it's pulled in
   automatically by Gradle.
 

@@ -36,7 +36,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class ComfyUIProvider implements ImageModelProvider {
 
     /**
-     * Pixel-art / game-icon suffix appended to an ITEM/ENTITY prompt to nudge diffusion
+     * Pixel-art / game-icon suffix appended to an ITEM/ENTITY/FLUID prompt to nudge diffusion
      * toward a crisp, low-resolution Minecraft sprite (centered subject on a transparent BG).
      */
     private static final String ITEM_SUFFIX =
@@ -45,41 +45,44 @@ public final class ComfyUIProvider implements ImageModelProvider {
 
     /**
      * Block suffix: a tileable, opaque <em>surface</em> that fills the frame — the opposite of a
-     * centered icon. Without this, diffusion paints the subject as a single object on a backdrop,
-     * which looks like a floating block when applied to all six faces.
+     * centered icon. Diffusion at low native resolution (64 px) cannot render detailed 3-D scenes,
+     * so the model is forced toward flat, low-detail color fields which post-processing then
+     * downscales to 16×16. The suffix reinforces "surface, not object".
      */
     private static final String BLOCK_SUFFIX =
-            ", flat tileable seamless block surface texture, top-down orthographic, fills the "
-            + "entire frame edge to edge, no background, no object, no perspective, pixel art, "
-            + "16-bit, Minecraft block texture";
-
-    /**
-     * Fluid suffix: a tileable, seamless top-down liquid surface that fills the entire frame.
-     * No transparency, no centered icon — every pixel is liquid. Animation is handled separately
-     * via .mcmeta; the diffusion output is a single still frame.
-     */
-    private static final String FLUID_SUFFIX =
-            ", seamless tileable top-down liquid surface texture, fills the entire frame edge to "
-            + "edge, subtle ripple or wave pattern, fully opaque, no transparency, no centered "
-            + "object, pixel art, 16-bit, Minecraft fluid texture";
+            ", seamless tileable flat surface texture, top-down orthographic view, fills entire "
+            + "frame edge to edge, no object, no background, no perspective, no horizon, no sky, "
+            + "no shadow, flat color fields, pixel art, 16-bit, Minecraft block texture, "
+            + "abstract pattern, repeating pattern";
 
     private static final String NEGATIVE_BASE =
             "blurry, anti-aliasing, smooth gradients, photorealistic, photo, 3d render, "
             + "watermark, signature, text, low quality, deformed";
 
-    /** Extra negatives for blocks: kill the "object on a background" failure mode. */
+    /** Extra negatives for blocks: kill the "object on a background" / "diorama" failure modes. */
     private static final String BLOCK_NEGATIVE_EXTRA =
-            ", centered object, single object, background, drop shadow, border, frame, vignette, "
-            + "perspective";
+            ", centered object, single object, isolated object, background, sky, horizon, "
+            + "drop shadow, border, frame, vignette, perspective, depth, diorama, scene, "
+            + "landscape, isometric, 3d, realistic, detailed, complex";
+
+    /** Fluid suffix: a seamless top-down liquid surface — opaque, tileable, never a centered icon. */
+    private static final String FLUID_SUFFIX =
+            ", seamless tileable liquid surface texture, top-down view, water-like ripples, "
+            + "fills entire frame edge to edge, no transparency, no object, no background, "
+            + "no perspective, flat, pixel art, 16-bit, Minecraft fluid texture";
+
+    /** Extra negatives for fluids: no transparent/centered-icon failure modes. */
+    private static final String FLUID_NEGATIVE_EXTRA =
+            ", transparent background, centered object, single object, border, frame, perspective, "
+            + "3d, diorama, scene";
 
     /**
-     * Extra negatives for fluids: prevent centered icons, transparency, and borders that would
-     * break tileability. "transparent background" is explicitly excluded so diffusion fills the
-     * entire frame with liquid colour.
+     * Native diffusion resolution for BLOCK textures. Much lower than the default 512/768 so the
+     * model literally cannot render a detailed 3-D scene — it resolves to flat color regions which
+     * the post-processor downscales cleanly to 16×16. 64 px is the minimum ComfyUI's VAE handles
+     * without artefacts (SD1.5 VAE minimum is 64, must be a multiple of 8).
      */
-    private static final String FLUID_NEGATIVE_EXTRA =
-            ", centered object, single object, transparent background, border, frame, vignette, "
-            + "icon, item, silhouette";
+    private static final int BLOCK_NATIVE_SIZE = 64;
 
     /** How long to keep polling {@code /history} before giving up. */
     private static final Duration POLL_TIMEOUT = Duration.ofMinutes(10);
@@ -114,12 +117,23 @@ public final class ComfyUIProvider implements ImageModelProvider {
 
     @Override
     public byte[] generateTexture(String prompt, int size, TextureKind kind) throws Exception {
-        // 1. Queue the workflow.
+        // 1. Queue the workflow at an appropriate native resolution.
+        //    For BLOCK we use a deliberately low native size (64 px) so the diffusion model cannot
+        //    render a detailed 3-D scene; the result is flat color regions that downscale cleanly.
         String promptId = queuePrompt(prompt, kind);
         // 2. Wait for the render to finish and locate the produced image.
         JsonObject image = awaitImage(promptId);
         // 3. Download the raw PNG bytes.
         return fetchImage(image);
+    }
+
+    /**
+     * Returns the native diffusion resolution to use for the given kind.
+     * BLOCK uses {@value #BLOCK_NATIVE_SIZE} px to force flat, non-detailed output.
+     * All other kinds use the configured {@code nativeSize} (512/768).
+     */
+    private int nativeSizeFor(TextureKind kind) {
+        return (kind == TextureKind.BLOCK) ? BLOCK_NATIVE_SIZE : nativeSize;
     }
 
     /** Positive-prompt suffix for the texture kind. */
@@ -177,11 +191,22 @@ public final class ComfyUIProvider implements ImageModelProvider {
     /**
      * Builds a standard txt2img workflow graph in ComfyUI's API JSON format. Node ids are arbitrary
      * strings; each node references another node's output as {@code ["<id>", <slotIndex>]}.
+     *
+     * <p>The checkpoint is always loaded via a {@code CheckpointLoaderSimple} node (node "4") wired
+     * with the {@code checkpoint} field sourced from {@link dev.conjure.Config#IMAGE_FAST_MODEL} /
+     * {@link dev.conjure.Config#IMAGE_HIGH_MODEL} (set by {@link dev.conjure.ai.ProviderFactory}).
+     * ComfyUI has no concept of a "currently loaded" model — every workflow must explicitly name its
+     * checkpoint.
+     *
+     * <p>The {@code EmptyLatentImage} node uses {@link #nativeSizeFor(TextureKind)}, which returns
+     * {@value #BLOCK_NATIVE_SIZE} px for BLOCK (to force flat output) and the configured
+     * {@link #nativeSize} for everything else.
      */
     private JsonObject buildWorkflow(String prompt, TextureKind kind) {
         JsonObject graph = new JsonObject();
+        int kindNativeSize = nativeSizeFor(kind);
 
-        // 4: load the checkpoint (outputs: 0=MODEL, 1=CLIP, 2=VAE)
+        // 4: load the configured checkpoint (outputs: 0=MODEL, 1=CLIP, 2=VAE)
         graph.add("4", node("CheckpointLoaderSimple",
                 obj("ckpt_name", checkpoint)));
 
@@ -197,11 +222,11 @@ public final class ComfyUIProvider implements ImageModelProvider {
                     o.add("clip", link("4", 1));
                 })));
 
-        // 5: empty latent at the native diffusion resolution
+        // 5: empty latent — use kind-specific native size (BLOCK: 64 px; others: 512/768)
         graph.add("5", node("EmptyLatentImage",
                 inputs(o -> {
-                    o.addProperty("width", nativeSize);
-                    o.addProperty("height", nativeSize);
+                    o.addProperty("width", kindNativeSize);
+                    o.addProperty("height", kindNativeSize);
                     o.addProperty("batch_size", 1);
                 })));
 

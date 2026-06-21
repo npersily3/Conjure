@@ -31,8 +31,13 @@ public final class DataAgent {
               "description": "<one sentence flavour text, max 20 words>",
               "visualIntent": "<what the TEXTURE/MODEL should DEPICT — colours, shape, motifs; what a
                                player should SEE. Max 20 words. Visual only, no behaviour.>",
-              "usageIntent": "<what the thing should DO in-game — its effect, interaction, or function.
-                              Max 20 words. Behaviour only, no looks. "Decorative, no function." if none.>",
+              "usageIntent": "<PRECISE per-trigger technical action spec — list ONLY the triggers that
+                              apply, each with CONCRETE numbers. Trigger names: use (right-click in air),
+                              useOnBlock (right-click on a block), hitEntity (hit a mob), swing (left-click
+                              swing, fires even on a miss). Format: 'trigger: action; trigger: action'.
+                              Example: 'hitEntity: deal 4 magic damage, apply slowness II for 3s;
+                              swing: knockback entities within 5 blocks at power 2'. Under 40 words.
+                              Behaviour only, no looks. Write 'none' if it has no interaction.>",
               "isMaterial": <true only if this is a solid building/decorative BLOCK material like
                              stone, marble, brick, wood, metal block; false for items, tools, ores,
                              machines, plants, glass, magical orbs, etc.>,

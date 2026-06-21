@@ -8,6 +8,8 @@ import dev.conjure.content.item.ConjureItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
+import net.minecraft.core.particles.ParticleType;
+import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
@@ -19,7 +21,9 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -27,8 +31,12 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.entity.EntityTypeTest;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
+
+import java.util.List;
 
 import javax.annotation.Nullable;
 
@@ -354,6 +362,77 @@ public final class ScriptContext {
         } catch (ScriptException e) {
             LOGGER.warn("[Conjure script] applyEffect('{}') failed: {}", name, e.getMessage());
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Generic helpers — safe wrappers so scripts rarely need raw MC API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns a Java array of {@link LivingEntity} instances within {@code radius} blocks of the
+     * player (excluding the player). Rhino iterates a Java array with a normal {@code for} loop.
+     */
+    public LivingEntity[] nearbyEntities(double radius) {
+        double r = Math.max(0, Math.min(radius, 32));
+        AABB box = new AABB(
+                player.getX() - r, player.getY() - r, player.getZ() - r,
+                player.getX() + r, player.getY() + r, player.getZ() + r);
+        List<LivingEntity> found = level.getEntities(
+                EntityTypeTest.forClass(LivingEntity.class), box, e -> e != player);
+        return found.toArray(new LivingEntity[0]);
+    }
+
+    /** Deal {@code amount} magic damage to {@code entity} (2 = 1 heart). No-op if null/≤0. */
+    public void hurtEntity(LivingEntity entity, double amount) {
+        if (entity != null && amount > 0) {
+            entity.hurt(player.damageSources().magic(), (float) amount);
+        }
+    }
+
+    /** Apply a potion effect to {@code entity}. {@code amp} 0 = level I; clamped 0–4, 1–600 s. */
+    public void effectEntity(LivingEntity entity, String effectId, int seconds, int amplifier) {
+        if (entity == null) return;
+        MobEffectInstance fx = effect(effectId, seconds, amplifier);
+        if (fx != null) entity.addEffect(fx);
+    }
+
+    /** Knock {@code entity} away from the player. {@code power} clamped 0–4. */
+    public void knockbackEntity(LivingEntity entity, double power) {
+        if (entity == null) return;
+        double p = Math.max(0, Math.min(power, 4));
+        entity.knockback(p, player.getX() - entity.getX(), player.getZ() - entity.getZ());
+    }
+
+    /** Set the block at world coords to {@code blockId} (e.g. "minecraft:gold_block"). */
+    public void setBlockAt(int x, int y, int z, String blockId) {
+        Block b = block(blockId);
+        if (b == null) return;
+        level.setBlockAndUpdate(new BlockPos(x, y, z), b.defaultBlockState());
+    }
+
+    /** Spawn a simple particle (e.g. "minecraft:heart") at coords; {@code count} clamped 1–256. */
+    public void particle(String particleId, double x, double y, double z, int count) {
+        if (!(level instanceof ServerLevel sl)) return;
+        ResourceLocation loc = ResourceLocation.tryParse(particleId);
+        if (loc == null) { LOGGER.warn("[Conjure script] particle: invalid id '{}'", particleId); return; }
+        ParticleType<?> type = BuiltInRegistries.PARTICLE_TYPE.get(loc);
+        if (!(type instanceof SimpleParticleType spt)) {
+            LOGGER.warn("[Conjure script] particle: '{}' unknown or not a simple particle", particleId);
+            return;
+        }
+        int n = Math.max(1, Math.min(count, 256));
+        sl.sendParticles(spt, x, y, z, n, 0.3, 0.3, 0.3, 0.0);
+    }
+
+    /** Summon an entity by id (e.g. "minecraft:zombie") at coords. No-op if unknown / not server. */
+    public void summon(String entityId, double x, double y, double z) {
+        if (!(level instanceof ServerLevel sl)) return;
+        ResourceLocation loc = ResourceLocation.tryParse(entityId);
+        if (loc == null) { LOGGER.warn("[Conjure script] summon: invalid id '{}'", entityId); return; }
+        EntityType<?> et = BuiltInRegistries.ENTITY_TYPE.get(loc);
+        if (et == null) { LOGGER.warn("[Conjure script] summon: unknown entity '{}'", entityId); return; }
+        et.spawn(sl, new BlockPos((int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z)),
+                MobSpawnType.COMMAND);
     }
 
     // -------------------------------------------------------------------------

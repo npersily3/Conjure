@@ -56,9 +56,12 @@ public final class Config {
                 .define("localEndpoint", "http://127.0.0.1:8188");
         IMAGE_QUALITY = b.comment("FAST (fewer steps, 512px, ~seconds) or HIGH (more steps, 768px, slower)")
                 .defineEnum("quality", ImageQuality.FAST);
-        IMAGE_FAST_MODEL = b.comment("ComfyUI checkpoint filename for FAST mode (must exist in ComfyUI/models/checkpoints)")
+        IMAGE_FAST_MODEL = b.comment("ComfyUI checkpoint filename for FAST mode (must exist in ComfyUI/models/checkpoints).",
+                        "For good FLAT block/item textures, use a PIXEL-ART checkpoint (e.g. All-In-One-Pixel-Model)",
+                        "instead of base SD1.5 — base SD1.5 renders 3D scenes. See README 'Texture quality' setup.")
                 .define("fastModel", "v1-5-pruned-emaonly.safetensors");
-        IMAGE_HIGH_MODEL = b.comment("ComfyUI checkpoint filename for HIGH mode (must exist in ComfyUI/models/checkpoints)")
+        IMAGE_HIGH_MODEL = b.comment("ComfyUI checkpoint filename for HIGH mode (must exist in ComfyUI/models/checkpoints).",
+                        "Recommend a pixel-art checkpoint here too — see README 'Texture quality'.")
                 .define("highModel", "v1-5-pruned-emaonly.safetensors");
         IMAGE_FAST_SIZE = b.comment("Generated texture edge length (px) in FAST mode")
                 .defineInRange("fastSize", 64, 16, 512);

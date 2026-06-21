@@ -7,7 +7,8 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Deterministic vanilla-pattern recipe JSON for a generated material family. The shapes (3-across
+ * Deterministic vanilla-pattern recipe JSON for a generated material family, plus builders for
+ * all recipe types supported by BlockPipeline's varied obtainability path. The shapes (3-across
  * → 6 slabs, stairs pattern → 4, smelt → smooth, stonecutter 1→N) are fixed Minecraft conventions,
  * so they're built directly from slot ids — no AI needed. Recipes are written under
  * {@code data/conjure/recipe/<id>.json} (singular {@code recipe/} in 1.21.1) and take effect on a
@@ -16,6 +17,14 @@ import java.util.List;
  *
  * <p>The {@code *Json} builders are pure (no IO) so they can be checked; see {@link #main} for a
  * runnable self-check of the recipe shapes.
+ *
+ * <h2>Additional recipe types (for BlockPipeline obtainability)</h2>
+ * <ul>
+ *   <li>{@link #writeShaped} — single-ingredient row-of-3 shaped crafting recipe.</li>
+ *   <li>{@link #writeSmelting(String,String,String,int)} — furnace smelting (with count).</li>
+ *   <li>{@link #writeBlasting} — blast furnace (faster smelting, half cookingtime).</li>
+ *   <li>{@link #writeSmithing} — smithing table transform (base + addition + template).</li>
+ * </ul>
  */
 public final class RecipeTemplates {
 
@@ -71,6 +80,59 @@ public final class RecipeTemplates {
         write(recipeId, shapelessJson(ingredientIds, resultId, count));
     }
 
+    /**
+     * Writes a shaped crafting recipe (row of 3 identical items → {@code resultId}).
+     * This is the simplest "shaped" form — a single row of 3 matching the {@code ###} pattern.
+     */
+    public static void writeShaped(String recipeId, String ingredientId, String resultId,
+                                   int count) throws IOException {
+        write(recipeId, shapedJson(ingredientId, new String[]{"###"}, resultId, count));
+    }
+
+    /**
+     * Writes a furnace smelting recipe.
+     *
+     * @param cookingtime ticks to smelt (200 = 10 s, the vanilla default for blocks)
+     * @param experience  XP awarded on completion
+     */
+    public static void writeSmelting(String recipeId, String ingredientId, String resultId,
+                                     int cookingtime, float experience) throws IOException {
+        write(recipeId, smeltingJson(ingredientId, resultId, cookingtime, experience));
+    }
+
+    /**
+     * Writes a furnace smelting recipe with vanilla block defaults (200 ticks, 0.1 XP).
+     * Overload kept so call-sites that only care about ingredient+result don't need to pass ticks.
+     */
+    public static void writeSmelting(String recipeId, String ingredientId, String resultId,
+                                     int count) throws IOException {
+        // count is ignored for smelting (always 1); kept for API symmetry.
+        write(recipeId, smeltingJson(ingredientId, resultId, 200, 0.1f));
+    }
+
+    /**
+     * Writes a blast-furnace recipe (half the cookingtime of a regular furnace, same category).
+     * Verified against {@code data/minecraft/recipe/coal_from_blasting_coal_ore.json} in 1.21.1.
+     */
+    public static void writeBlasting(String recipeId, String ingredientId, String resultId,
+                                     int count) throws IOException {
+        write(recipeId, blastingJson(ingredientId, resultId, count));
+    }
+
+    /**
+     * Writes a smithing-table transform recipe.
+     * Verified against {@code data/minecraft/recipe/netherite_sword_smithing.json} in 1.21.1.
+     * The type is {@code minecraft:smithing_transform}.
+     *
+     * @param baseId     the item being upgraded
+     * @param additionId the item added (e.g. minecraft:netherite_ingot)
+     * @param templateId the smithing template (e.g. minecraft:netherite_upgrade_smithing_template)
+     */
+    public static void writeSmithing(String recipeId, String baseId, String additionId,
+                                     String templateId, String resultId, int count) throws IOException {
+        write(recipeId, smithingJson(baseId, additionId, templateId, resultId, count));
+    }
+
     private static void write(String recipeId, String json) throws IOException {
         DynamicPackManager.write(DIR + recipeId + ".json", json);
     }
@@ -91,10 +153,38 @@ public final class RecipeTemplates {
     }
 
     static String smeltingJson(String ingredientId, String resultId) {
+        return smeltingJson(ingredientId, resultId, 200, 0.1f);
+    }
+
+    static String smeltingJson(String ingredientId, String resultId, int cookingtime, float experience) {
         return "{\"type\":\"minecraft:smelting\",\"category\":\"blocks\","
-                + "\"cookingtime\":200,\"experience\":0.1,"
+                + "\"cookingtime\":" + cookingtime + ",\"experience\":" + experience + ","
                 + "\"ingredient\":{\"item\":\"" + ingredientId + "\"},"
                 + "\"result\":{\"id\":\"" + resultId + "\"}}";
+    }
+
+    /**
+     * Blast-furnace recipe. Cookingtime is half of smelting (100 ticks). Category "blocks" matches
+     * vanilla stone-type blasting recipes. Verified against 1.21.1 blasting recipe JSON shape.
+     */
+    static String blastingJson(String ingredientId, String resultId, int count) {
+        return "{\"type\":\"minecraft:blasting\",\"category\":\"blocks\","
+                + "\"cookingtime\":100,\"experience\":0.1,"
+                + "\"ingredient\":{\"item\":\"" + ingredientId + "\"},"
+                + "\"result\":{\"count\":" + count + ",\"id\":\"" + resultId + "\"}}";
+    }
+
+    /**
+     * Smithing-table transform recipe. Verified against {@code netherite_sword_smithing.json} in
+     * 1.21.1: type {@code minecraft:smithing_transform}, fields template/base/addition/result.
+     */
+    static String smithingJson(String baseId, String additionId, String templateId,
+                               String resultId, int count) {
+        return "{\"type\":\"minecraft:smithing_transform\","
+                + "\"base\":{\"item\":\"" + baseId + "\"},"
+                + "\"addition\":{\"item\":\"" + additionId + "\"},"
+                + "\"template\":{\"item\":\"" + templateId + "\"},"
+                + "\"result\":{\"count\":" + count + ",\"id\":\"" + resultId + "\"}}";
     }
 
     static String shapelessJson(List<String> ingredientIds, String resultId, int count) {
@@ -146,6 +236,26 @@ public final class RecipeTemplates {
         assert "minecraft:crafting_shapeless".equals(shapeless.get("type").getAsString());
         assert shapeless.getAsJsonArray("ingredients").size() == 2;
         assert "conjure:block_slot_7".equals(shapeless.getAsJsonObject("result").get("id").getAsString());
+
+        // ponytail: blasting builder must parse and match 1.21.1 schema
+        JsonObject blasting = JsonParser.parseString(
+                blastingJson("minecraft:iron_ore", "conjure:block_slot_8", 1)).getAsJsonObject();
+        assert "minecraft:blasting".equals(blasting.get("type").getAsString());
+        assert "blocks".equals(blasting.get("category").getAsString());
+        assert blasting.get("cookingtime").getAsInt() == 100;
+        assert "minecraft:iron_ore".equals(blasting.getAsJsonObject("ingredient").get("item").getAsString());
+        assert "conjure:block_slot_8".equals(blasting.getAsJsonObject("result").get("id").getAsString());
+
+        // ponytail: smithing builder must parse and match 1.21.1 smithing_transform schema
+        JsonObject smithing = JsonParser.parseString(
+                smithingJson("minecraft:diamond_pickaxe", "minecraft:netherite_ingot",
+                        "minecraft:netherite_upgrade_smithing_template",
+                        "conjure:block_slot_9", 1)).getAsJsonObject();
+        assert "minecraft:smithing_transform".equals(smithing.get("type").getAsString());
+        assert "minecraft:diamond_pickaxe".equals(smithing.getAsJsonObject("base").get("item").getAsString());
+        assert "minecraft:netherite_ingot".equals(smithing.getAsJsonObject("addition").get("item").getAsString());
+        assert "minecraft:netherite_upgrade_smithing_template".equals(smithing.getAsJsonObject("template").get("item").getAsString());
+        assert "conjure:block_slot_9".equals(smithing.getAsJsonObject("result").get("id").getAsString());
 
         System.out.println("RecipeTemplates self-check OK (run with -ea)");
     }

@@ -57,7 +57,7 @@ public final class ItemPipeline implements GenerationPipeline {
 
         feedback.accept("§7[Conjure] Generating behavior script…");
         String scriptId = "item_" + slot;
-        PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt));
+        PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent()));
 
         SlotDefinition def = new SlotDefinition(SlotKind.ITEM, slot);
         def.displayName      = data.displayName();

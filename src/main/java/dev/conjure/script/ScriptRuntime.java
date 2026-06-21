@@ -153,6 +153,31 @@ public final class ScriptRuntime {
         execScript("effect:" + name, script, ctx);
     }
 
+    /**
+     * Compile-check {@code source} under the same sandbox {@link ClassShutter} WITHOUT executing it.
+     * Returns {@code null} if it compiles, or the compile error message if it fails. A lightweight
+     * syntax check that catches Java-isms (type declarations, arrow functions, method refs) and any
+     * other JS syntax errors before the script is written to disk.
+     *
+     * @param source raw JavaScript source to validate
+     * @return {@code null} on success, or the error message on failure
+     */
+    public String validate(String source) {
+        if (source == null || source.isBlank()) return "Empty script";
+        SandboxContextFactory factory = new SandboxContextFactory();
+        Context rhinoCtx = factory.enterContext();
+        try {
+            rhinoCtx.setOptimizationLevel(-1);
+            rhinoCtx.setClassShutter(SHUTTER);
+            rhinoCtx.compileString(source, "<validate>", 1, null);
+            return null;
+        } catch (Exception e) {
+            return e.getMessage();
+        } finally {
+            Context.exit();
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------------

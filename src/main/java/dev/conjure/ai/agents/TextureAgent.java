@@ -15,11 +15,22 @@ import dev.conjure.gen.PixelTexture;
  * Sub-agent responsible for producing a pixel-art texture from a natural-language prompt.
  *
  * <p>Primary path: if a local image backend (ComfyUI) is configured, delegate to
- * {@link ProviderFactory#image()} and decode the returned PNG via {@link PixelTexture#fromPng}.
+ * {@link ProviderFactory#image()} and decode the returned PNG via
+ * {@link PixelTexture#fromPng(byte[], int, TextureKind)} which applies kind-specific
+ * post-processing (block tiling + quantize, item background masking).
  *
  * <p>Fallback path: the text model is asked to emit a JSON palette + 16-row grid; this class
  * decodes the response into an ARGB {@code int[][]} that can be fed to {@link PixelTexture#writePng}.
  * The fallback is always used if the image provider is {@code null} or throws.
+ *
+ * <h2>Overloads</h2>
+ * <ul>
+ *   <li>{@link #generate(String, TextureKind)} — basic; prompt is used as-is.</li>
+ *   <li>{@link #generate(String, String, TextureKind)} — enriched; a {@code visualIntent} string
+ *       is prepended to the prompt for both the image backend and the LLM fallback. This lets the
+ *       block pipeline supply additional visual hints (material, color, style) without the callers
+ *       having to manually concatenate strings.</li>
+ * </ul>
  */
 public final class TextureAgent {
 
@@ -50,10 +61,7 @@ public final class TextureAgent {
             + "opaque (no \"#00000000\").\n"
             + SCHEMA;
 
-    /**
-     * Fluids are a tileable, seamless liquid surface that fills the entire frame edge-to-edge.
-     * No transparency, no centered icon, no background — every pixel is part of the fluid.
-     */
+    /** Fluids are a tileable, seamless, top-down liquid surface — never a centered icon. */
     private static final String FLUID_SYSTEM =
             "You design Minecraft fluid surface textures as 16x16 pixel art: a tileable, seamless, "
             + "top-down liquid surface that fills the WHOLE 16x16 grid edge to edge with no gaps. "
@@ -70,6 +78,10 @@ public final class TextureAgent {
         };
     }
 
+    // -------------------------------------------------------------------------
+    // Public generate overloads
+    // -------------------------------------------------------------------------
+
     /**
      * Generates a pixel-art texture for {@code prompt}.
      *
@@ -77,28 +89,34 @@ public final class TextureAgent {
      * it fails for any reason, falls back to the LLM pixel-art strategy. Never throws — on
      * total failure returns a transparent grid rather than breaking generation.
      *
-     * @param prompt the item description (e.g. "a glowing emerald sword")
-     * @param kind   texture kind — controls prompt augmentation and post-processing
-     * @return ARGB pixel grid, indexed [y][x]; size varies by quality tier (image path) or is
-     *         always 16×16 (fallback path)
+     * @param prompt the item/block description (e.g. "a glowing emerald sword")
+     * @param kind   what kind of texture to produce; steers prompts and post-processing
+     * @return ARGB pixel grid, indexed [y][x]; 16×16 on the fallback path; size depends on config
+     *         and kind on the image-backend path (BLOCK is always 16×16 after post-processing)
      */
     public int[][] generate(String prompt, TextureKind kind) throws Exception {
         return generate(prompt, null, kind);
     }
 
     /**
-     * Enrichment overload — accepts an optional {@code visualIntent} string (e.g. a short
-     * flavour description from {@link DataAgent}) that is appended to the prompt before it is
-     * sent to the image backend or LLM fallback. This lets the DataAgent's richer noun phrases
-     * steer the visual without changing the user's original prompt.
+     * Generates a pixel-art texture with an optional {@code visualIntent} enrichment.
      *
-     * @param prompt       the item/block/fluid description (user-supplied)
-     * @param visualIntent optional extra visual context; may be {@code null} or empty
-     * @param kind         texture kind — controls prompt augmentation and post-processing
+     * <p>When {@code visualIntent} is non-null and non-blank it is prepended to {@code prompt}
+     * before the image backend (or LLM fallback) is called. This is the recommended call site for
+     * the block pipeline, which can supply a visual hint such as "dark grey stone with orange veins"
+     * to steer the texture without changing the block's display name.
+     *
+     * <p>This overload is the contract that other lanes/pipelines must call when they have visual
+     * enrichment data; the 2-arg overload delegates here with {@code visualIntent = null}.
+     *
+     * @param prompt       the item/block description
+     * @param visualIntent optional visual-style hint (may be null or blank)
+     * @param kind         what kind of texture to produce
+     * @return ARGB pixel grid
      */
     public int[][] generate(String prompt, String visualIntent, TextureKind kind) throws Exception {
-        String enrichedPrompt = (visualIntent != null && !visualIntent.isBlank())
-                ? prompt + ". " + visualIntent
+        String enriched = (visualIntent != null && !visualIntent.isBlank())
+                ? visualIntent + ", " + prompt
                 : prompt;
 
         // Determine target size from config
@@ -111,17 +129,18 @@ public final class TextureAgent {
         try {
             ImageModelProvider imageProvider = ProviderFactory.image();
             if (imageProvider != null) {
-                byte[] pngBytes = imageProvider.generateTexture(enrichedPrompt, targetSize, kind);
+                byte[] pngBytes = imageProvider.generateTexture(enriched, targetSize, kind);
+                // Use kind-aware fromPng so blocks get tiling+quantize, items get BG masking
                 return PixelTexture.fromPng(pngBytes, targetSize, kind);
             }
         } catch (Exception e) {
             Conjure.LOGGER.warn(
                     "[TextureAgent] Image provider failed for '{}', falling back to LLM pixel-art: {}",
-                    enrichedPrompt, e.getMessage());
+                    enriched, e.getMessage());
         }
 
         // Fallback path: ask the text model to emit a pixel-art JSON grid
-        return llmFallback(enrichedPrompt, kind);
+        return llmFallback(enriched, kind);
     }
 
     // -------------------------------------------------------------------------

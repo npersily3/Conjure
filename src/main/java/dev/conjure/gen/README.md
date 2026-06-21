@@ -16,8 +16,9 @@ executor) so the game thread is never blocked.
 | `GenerationStatus.java` | Common-side atomic counter of in-flight generation tasks. The client HUD (`ConjureHud`) reads it to draw the thinking indicator and to keep the game running while unfocused. |
 | `ModService.java` | Multi-piece orchestrator. Runs `ModPlannerAgent` on a `conjure-mod-planner` daemon thread to decompose a description into pieces, then enqueues each piece onto `GenerationService`. Two modes: `buildMod` (always-expansive) and `build` (auto-mode for `/conjure new`). |
 | `DynamicPackManager.java` | Owns the on-disk pack at `<gamedir>/conjure/generated/` (registered as both resource pack and datapack). Per-kind write methods for cube textures/models/blockstates/item-models, for slab/stairs/wall assets (which reuse a base texture), and `writeActivatableAssets` (two textures + a two-variant blockstate for stateful off/on blocks). Generic `write`/`writePngAt` helpers for custom paths (recipes use `write`). |
-| `RecipeTemplates.java` | Deterministic vanilla-pattern recipe JSON for a material family (3-across → 6 slabs, stairs pattern → 4, smelt → smooth, stonecutter). Pure `*Json` builders + `writeFamily`; runnable self-check in `main`. |
-| `PixelTexture.java` | Static utilities for PNG I/O: `fromPng(byte[], targetSize)` nearest-neighbour downscales a raw PNG to a target size; `writePng(argb, path)` encodes an ARGB grid to a PNG file; `parseColor` parses `#RRGGBB`/`#AARRGGBB` hex strings. |
+| `RecipeTemplates.java` | Deterministic recipe JSON builders — shaped/shapeless/smelting/blasting/smithing/stonecutting/campfire — plus material-family wiring (`writeFamily`). Runnable self-check in `main`. |
+| `LootTableTemplates.java` | Writes block loot-table JSON (`writeSelfDrop` → the block drops itself) to `data/conjure/loot_table/blocks/<id>.json` so conjured blocks drop in survival. Self-check in `main`. |
+| `PixelTexture.java` | PNG I/O + post-processing: `fromPng(bytes, size, kind)` downscales and, per kind, masks an item's background to transparent (border-sampled flood-fill), and for BLOCK/FLUID hard-downscales to 16×16, makes the texture seamlessly tileable, and palette-quantizes for a flat 16-bit look. `writePng`/`parseColor` helpers; self-check in `main`. |
 
 ## Sub-packages
 

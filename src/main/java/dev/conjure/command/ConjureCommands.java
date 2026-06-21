@@ -9,7 +9,9 @@ import dev.conjure.content.SlotRegistry;
 import dev.conjure.content.structure.StructurePlacer;
 import dev.conjure.gen.GenerationService;
 import dev.conjure.gen.ModService;
+import dev.conjure.gen.GenerationStatus;
 import dev.conjure.gen.pipeline.PipelineSupport;
+import dev.conjure.gen.pipeline.WorldgenPipeline;
 import dev.conjure.persist.SlotStore;
 import dev.conjure.registry.ConjureItems;
 import dev.conjure.registry.ConjureStructures;
@@ -47,6 +49,12 @@ public final class ConjureCommands {
         event.getDispatcher().register(
                 Commands.literal("conjure")
                         // /conjure new <prompt>
+                        // If the prompt describes an ore or world-spawning block (keywords: "ore",
+                        // "vein", "spawns in", "worldgen", "generates in", "underground deposit"),
+                        // the WorldgenPipeline is dispatched instead: it generates a block AND writes
+                        // the three datapack JSON files (configured_feature, placed_feature,
+                        // biome_modifier) so the ore spawns in new chunks after a world rejoin.
+                        // Any other prompt falls through to the normal ModService routing.
                         .then(Commands.literal("new")
                                 .then(Commands.argument("prompt", StringArgumentType.greedyString())
                                         .executes(ctx -> {
@@ -58,11 +66,33 @@ public final class ConjureCommands {
                                                     () -> Component.literal("§7Conjuring \"" + prompt + "\"… (this may take a few seconds)"),
                                                     false);
 
-                                            // Smart mode: a single concrete prompt yields one piece;
-                                            // themed/plural prompts expand into many.
-                                            ModService.build(prompt, msg ->
-                                                    server.execute(() -> source.sendSystemMessage(
-                                                            Component.literal("§a[Conjure] §f" + msg))), false);
+                                            if (isOreOrWorldgenPrompt(prompt)) {
+                                                // Dispatch to WorldgenPipeline on a background thread
+                                                // (mirrors the GenerationService pattern but self-contained).
+                                                Thread t = new Thread(() -> {
+                                                    GenerationStatus.begin();
+                                                    try {
+                                                        new WorldgenPipeline().run(prompt, msg ->
+                                                                server.execute(() -> source.sendSystemMessage(
+                                                                        Component.literal("§a[Conjure] §f" + msg))));
+                                                    } catch (Exception e) {
+                                                        Conjure.LOGGER.error("Conjure worldgen generation failed", e);
+                                                        String err = PipelineSupport.describe(e);
+                                                        server.execute(() -> source.sendSystemMessage(
+                                                                Component.literal("§c[Conjure] §fGeneration failed: " + err)));
+                                                    } finally {
+                                                        GenerationStatus.end();
+                                                    }
+                                                }, "conjure-worldgen");
+                                                t.setDaemon(true);
+                                                t.start();
+                                            } else {
+                                                // Smart mode: a single concrete prompt yields one piece;
+                                                // themed/plural prompts expand into many.
+                                                ModService.build(prompt, msg ->
+                                                        server.execute(() -> source.sendSystemMessage(
+                                                                Component.literal("§a[Conjure] §f" + msg))), false);
+                                            }
                                             return 1;
                                         })))
 
@@ -275,6 +305,26 @@ public final class ConjureCommands {
                                             "§c[Conjure] §fNuked all generated content. Every slot is empty again."), false);
                                     return 1;
                                 })));
+    }
+
+    /**
+     * Returns {@code true} if the prompt describes an ore, mineral vein, or world-spawning block
+     * that should be dispatched to {@link WorldgenPipeline} rather than the normal block pipeline.
+     * Keyword matching is intentionally simple and fast — the AI generates the content anyway.
+     */
+    private static boolean isOreOrWorldgenPrompt(String prompt) {
+        String p = prompt.toLowerCase(java.util.Locale.ROOT);
+        return p.contains("ore")
+                || p.contains(" vein")
+                || p.contains("mineral")
+                || p.contains("deposit")
+                || p.contains("worldgen")
+                || p.contains("world gen")
+                || p.contains("spawns in")
+                || p.contains("generates in")
+                || p.contains("underground ore")
+                || p.contains("overworld ore")
+                || p.contains("nether ore");
     }
 
     /** Maps a command keyword to a {@link SlotKind}, or {@code null} if unrecognised. */

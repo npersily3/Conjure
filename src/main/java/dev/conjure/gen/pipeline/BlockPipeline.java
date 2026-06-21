@@ -16,6 +16,7 @@ import dev.conjure.content.SlotRegistry;
 import dev.conjure.content.block.BlockArchetype;
 import dev.conjure.content.block.WorkbenchRecipes;
 import dev.conjure.gen.DynamicPackManager;
+import dev.conjure.gen.LootTableTemplates;
 import dev.conjure.gen.RecipeTemplates;
 import dev.conjure.registry.ConjureSlabs;
 import dev.conjure.registry.ConjureStairs;
@@ -182,13 +183,13 @@ public final class BlockPipeline implements GenerationPipeline {
                 def.strings.put("interaction", "stateful");
                 feedback.accept("§7[Conjure] Generating stateful behavior…");
                 String scriptId = "block_slot_" + slot;
-                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt));
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent()));
                 def.behaviorScriptId = scriptId;
                 def.strings.put("keyId", "conjure_key_" + slot);
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");
-                String js       = new LogicAgent().generate(prompt);
+                String js       = new LogicAgent().generate(prompt, data.usageIntent());
                 String scriptId = "block_slot_" + slot;
                 PipelineSupport.writeScript(scriptId, js);
                 def.behaviorScriptId = scriptId;
@@ -203,10 +204,13 @@ public final class BlockPipeline implements GenerationPipeline {
 
         PipelineSupport.commit(def);
 
-        // Survival obtainability: a shapeless crafting recipe from vanilla ingredients, for any
-        // block (a "magic orb block" is craftable even though it isn't a building material).
+        // Loot table: always write so breaking the block in survival yields a drop.
+        writeLootTable("block_slot_" + slot, "conjure:block_slot_" + slot);
+
+        // Survival obtainability: varied recipe type chosen by the AI (shapeless, shaped,
+        // smelting, blasting, smithing, or stonecutting) so not every block gets stonecutting.
         if (Config.RECIPES_ENABLED.get()) {
-            writeCraftingRecipe("block_slot_" + slot, prompt, "conjure:block_slot_" + slot, feedback);
+            writeObtainabilityRecipe("block_slot_" + slot, prompt, "conjure:block_slot_" + slot, feedback);
         }
 
         String kindLabel = switch (machineResult.kind()) {
@@ -292,14 +296,14 @@ public final class BlockPipeline implements GenerationPipeline {
                 def.strings.put("interaction", "stateful");
                 feedback.accept("§7[Conjure] Generating stateful behavior…");
                 String scriptId = "block_slot_" + slot;
-                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt));
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent()));
                 def.behaviorScriptId = scriptId;
                 def.strings.put("keyId", "conjure_key_" + slot);
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");
                 String scriptId = "block_slot_" + slot;
-                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt));
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent()));
                 def.behaviorScriptId = scriptId;
                 def.strings.put("interaction", "script");
             }
@@ -310,6 +314,10 @@ public final class BlockPipeline implements GenerationPipeline {
         }
 
         PipelineSupport.commit(def);
+
+        // Loot table: regenerate so the block drops itself (or keep previous drop if IO fails).
+        writeLootTable("block_slot_" + slot, "conjure:block_slot_" + slot);
+
         feedback.accept("Regenerated '" + data.displayName() + "' → block slot #" + slot + ".");
     }
 
@@ -405,19 +413,43 @@ public final class BlockPipeline implements GenerationPipeline {
     }
 
     /**
-     * Writes a shapeless crafting recipe (vanilla ingredients → the block) and reloads datapacks so
-     * it applies live. Best-effort: a model/IO failure is logged and skipped, never failing the
-     * block generation that already succeeded.
+     * Writes a varied obtainability recipe for the block, dispatching to the recipe type chosen by
+     * {@link RecipeAgent#chooseRecipe}. Replaces the old always-shapeless path.
+     * Best-effort: model/IO failure is logged and skipped, never failing the block generation that
+     * already succeeded.
      */
-    private static void writeCraftingRecipe(String recipeId, String prompt, String resultId,
-                                            Consumer<String> feedback) {
+    private static void writeObtainabilityRecipe(String recipeId, String prompt, String resultId,
+                                                  Consumer<String> feedback) {
         try {
             feedback.accept("§7[Conjure] Writing recipe…");
-            java.util.List<String> ingredients = new RecipeAgent().craftIngredients(prompt);
-            RecipeTemplates.writeShapeless(recipeId, ingredients, resultId, 1);
+            RecipeAgent.ObtainabilityResult choice = new RecipeAgent().chooseRecipe(prompt);
+            java.util.List<String> ing = choice.ingredients();
+            int count = choice.outputCount();
+            switch (choice.type()) {
+                case SHAPELESS    -> RecipeTemplates.writeShapeless(recipeId, ing, resultId, count);
+                case SHAPED       -> RecipeTemplates.writeShaped(recipeId, ing.get(0), resultId, count);
+                case SMELTING     -> RecipeTemplates.writeSmelting(recipeId, ing.get(0), resultId, count);
+                case BLASTING     -> RecipeTemplates.writeBlasting(recipeId, ing.get(0), resultId, count);
+                case SMITHING     -> RecipeTemplates.writeSmithing(recipeId,
+                                        ing.get(0), ing.get(1), ing.get(2), resultId, count);
+                case STONECUTTING -> RecipeTemplates.writeStonecutting(recipeId, ing.get(0), resultId, count);
+            }
+            Conjure.LOGGER.info("[Conjure] {} obtainability: {} ({})", recipeId, choice.type(), ing);
             PipelineSupport.reloadData();
         } catch (Exception e) {
-            Conjure.LOGGER.warn("[Conjure] crafting recipe skipped for {}: {}", recipeId, e.getMessage());
+            Conjure.LOGGER.warn("[Conjure] obtainability recipe skipped for {}: {}", recipeId, e.getMessage());
+        }
+    }
+
+    /**
+     * Writes a self-drop loot table so breaking the block in survival always yields the block item.
+     * Best-effort: IO failure is logged and skipped.
+     */
+    private static void writeLootTable(String slotId, String blockId) {
+        try {
+            LootTableTemplates.writeSelfDrop(slotId, blockId);
+        } catch (Exception e) {
+            Conjure.LOGGER.warn("[Conjure] loot table skipped for {}: {}", slotId, e.getMessage());
         }
     }
 
