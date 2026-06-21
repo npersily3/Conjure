@@ -93,14 +93,25 @@ public final class LogicAgent {
               ctx.targetBlockStr(key) / ctx.targetBlockNum(key) — tunables on the target block
               ctx.applyEffect(name)            — run a named reusable effect script
 
-            GENERIC ENTITY / WORLD HELPERS (prefer these over raw MC API):
-              ctx.nearbyEntities(radius)       — array of living entities near the player (for-loop it)
-              ctx.hurtEntity(entity, amount)   — magic damage to an entity (2 = 1 heart)
-              ctx.effectEntity(entity, id, sec, amp) — potion effect on an entity
-              ctx.knockbackEntity(entity, power)     — push an entity away from the player (0–4)
+            GENERIC ENTITY / WORLD HELPERS (prefer these; NEVER loop over entities yourself):
+              ctx.damageNearby(radius, amount)       — magic damage to ALL mobs within radius
+              ctx.effectNearby(radius, id, sec, amp) — potion effect on ALL mobs within radius
+              ctx.knockbackNearby(radius, power)     — push ALL mobs within radius away (0–4)
+              ctx.hurtEntity(entity, amount)         — for the single hit mob: ctx.getTargetEntity()
+              ctx.effectEntity(entity, id, sec, amp) — potion effect on one entity
+              ctx.knockbackEntity(entity, power)     — push one entity away (0–4)
               ctx.setBlockAt(x, y, z, blockId) — place a block at world coords
-              ctx.particle(particleId, x, y, z, count) — spawn a simple particle (e.g. "minecraft:heart")
+              ctx.particle(particleId, x, y, z, count) — spawn a simple particle
               ctx.summon(entityId, x, y, z)    — summon an entity (e.g. "minecraft:zombie")
+
+            USE ONLY THESE IDS (anything else silently does nothing — do NOT invent ids):
+              effects:   minecraft: speed, slowness, haste, strength, weakness, poison, regeneration,
+                         resistance, fire_resistance, water_breathing, invisibility, jump_boost,
+                         nausea, blindness, glowing, levitation, absorption, wither, hunger
+              particles: minecraft: flame, smoke, large_smoke, heart, crit, enchanted_hit, cloud,
+                         bubble, splash, lava, soul, soul_fire_flame, electric_spark, end_rod, poof
+              sounds:    minecraft: entity.player.levelup, block.fire.ambient, entity.generic.explode,
+                         block.note_block.bell, entity.lightning_bolt.thunder, block.chest.open
 
             KEY / UNLOCKING items: a lockable Conjure block carries a non-empty "keyId". Example:
               if (ctx.hasTargetBlock() && ctx.targetBlockStr("keyId") !== "") {
@@ -108,32 +119,25 @@ public final class LogicAgent {
                 ctx.playSound("minecraft:block.chest.open");
               }
 
-            EXAMPLE — summon a lightning bolt at the player using raw MC API:
-              var sl = ctx.getLevel();
-              var p = ctx.getPlayer();
-              var bolt = net.minecraft.world.entity.EntityType.LIGHTNING_BOLT.create(sl);
-              if (bolt) { bolt.moveTo(p.getX(), p.getY(), p.getZ()); sl.addFreshEntity(bolt); }
-
-            EXAMPLE — area knockback on swing (push nearby mobs away):
+            EXAMPLE — area attack on swing (push and damage nearby mobs):
               if (ctx.trigger() === "swing") {
-                var p = ctx.getPlayer();
-                var level = ctx.getLevel();
-                var nearby = level.getEntities(p, p.getBoundingBox().inflate(5));
-                for (var i = 0; i < nearby.size(); i++) {
-                  var e = nearby.get(i);
-                  if (e !== p) e.knockback(2, p.getX()-e.getX(), p.getZ()-e.getZ());
-                }
-                ctx.playSound("minecraft:entity.player.attack.sweep");
+                ctx.knockbackNearby(5, 2);
+                ctx.damageNearby(5, 4);
+                ctx.playSound("minecraft:entity.generic.explode");
               }
 
-            EXAMPLE — spawn a phantom on right-click:
-              var sl = ctx.getLevel();
-              var p = ctx.getPlayer();
-              var phantom = net.minecraft.world.entity.EntityType.PHANTOM.create(sl);
-              if (phantom) {
-                phantom.moveTo(p.getX(), p.getY()+3, p.getZ());
-                sl.addFreshEntity(phantom);
-                ctx.message("A phantom answers your call.");
+            EXAMPLE — weapon that weakens what it hits:
+              if (ctx.trigger() === "hitEntity") {
+                var t = ctx.getTargetEntity();
+                ctx.hurtEntity(t, 6);
+                ctx.effectEntity(t, "minecraft:weakness", 5, 1);
+              }
+
+            EXAMPLE — a healing wand:
+              if (ctx.trigger() === "use") {
+                ctx.heal(6);
+                ctx.giveEffect("minecraft:regeneration", 5, 1);
+                ctx.particle("minecraft:heart", ctx.getPlayer().getX(), ctx.getPlayer().getY()+1, ctx.getPlayer().getZ(), 8);
               }
 
             JAVASCRIPT, NOT JAVA — this is the #1 cause of broken scripts. The sandbox runs JavaScript:
@@ -142,7 +146,7 @@ public final class LogicAgent {
               factory methods like `net.minecraft.world.entity.EntityType.ZOMBIE.create(level)`.
             - NO arrow functions.  WRONG: `list.filter(e => e != p)`   RIGHT: a plain `for` loop.
             - NO method references `::`. NO `java.util.*`, `java.io.*`, `java.lang.reflect.*` (denied).
-            - Prefer the ctx helpers above (ctx.nearbyEntities, ctx.hurtEntity, …) over raw MC API.
+            - Prefer the ctx helpers above (ctx.damageNearby, ctx.hurtEntity, …) over raw MC API.
 
             Rules:
             - NO require(), NO Packages, NO imports.

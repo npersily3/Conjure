@@ -14,7 +14,6 @@ import dev.conjure.registry.ConjureStairs;
 import dev.conjure.registry.ConjureStructures;
 import dev.conjure.registry.ConjureTabs;
 import dev.conjure.registry.ConjureWalls;
-import dev.conjure.registry.ConjureWorldgen;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -45,7 +44,6 @@ public final class Conjure {
         ConjureFluids.register(modBus);        // 32 fluid sets (source+flowing+block+bucket)
         ConjureEntities.register(modBus);      // 128 mob slots across 3 size buckets
         ConjureStructures.register(modBus);    // 1 StructureType for 100 datapack structure slots
-        ConjureWorldgen.register(modBus);      // 32 worldgen tracking slots (JSON-driven ore injection)
         ConjureTabs.register(modBus);          // creative-inventory tab for generated content
 
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
@@ -55,7 +53,7 @@ public final class Conjure {
         modBus.addListener((FMLCommonSetupEvent event) -> BackendBootstrap.start());
 
         LOGGER.info(
-                "Conjure online — pools: {} items, {} blocks ({} archetypes), {} fluids, {} entities ({}S/{}M/{}L), {} structure slots, {} worldgen slots",
+                "Conjure online — pools: {} items, {} blocks ({} archetypes), {} fluids, {} entities ({}S/{}M/{}L), {} structure slots",
                 ConjureItems.ITEM_POOL,
                 BlockArchetype.totalPool(),
                 BlockArchetype.values().length,
@@ -64,7 +62,6 @@ public final class Conjure {
                 ConjureEntities.SMALL,
                 ConjureEntities.MEDIUM,
                 ConjureEntities.LARGE,
-                ConjureStructures.STRUCTURE_POOL,
-                ConjureWorldgen.WORLDGEN_POOL);
+                ConjureStructures.STRUCTURE_POOL);
     }
 }

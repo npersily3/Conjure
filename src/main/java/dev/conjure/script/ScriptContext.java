@@ -368,18 +368,27 @@ public final class ScriptContext {
     // Generic helpers — safe wrappers so scripts rarely need raw MC API
     // -------------------------------------------------------------------------
 
-    /**
-     * Returns a Java array of {@link LivingEntity} instances within {@code radius} blocks of the
-     * player (excluding the player). Rhino iterates a Java array with a normal {@code for} loop.
-     */
-    public LivingEntity[] nearbyEntities(double radius) {
+    /** Deal magic damage to every living entity within {@code radius} of the player (loops internally). */
+    public void damageNearby(double radius, double amount) {
+        for (LivingEntity e : near(radius)) hurtEntity(e, amount);
+    }
+
+    /** Apply a potion effect to every living entity within {@code radius} of the player. */
+    public void effectNearby(double radius, String effectId, int seconds, int amplifier) {
+        for (LivingEntity e : near(radius)) effectEntity(e, effectId, seconds, amplifier);
+    }
+
+    /** Knock every living entity within {@code radius} away from the player. */
+    public void knockbackNearby(double radius, double power) {
+        for (LivingEntity e : near(radius)) knockbackEntity(e, power);
+    }
+
+    /** Living entities within {@code radius} of the player (excluding the player). */
+    private List<LivingEntity> near(double radius) {
         double r = Math.max(0, Math.min(radius, 32));
-        AABB box = new AABB(
-                player.getX() - r, player.getY() - r, player.getZ() - r,
+        AABB box = new AABB(player.getX() - r, player.getY() - r, player.getZ() - r,
                 player.getX() + r, player.getY() + r, player.getZ() + r);
-        List<LivingEntity> found = level.getEntities(
-                EntityTypeTest.forClass(LivingEntity.class), box, e -> e != player);
-        return found.toArray(new LivingEntity[0]);
+        return level.getEntities(EntityTypeTest.forClass(LivingEntity.class), box, e -> e != player);
     }
 
     /** Deal {@code amount} magic damage to {@code entity} (2 = 1 heart). No-op if null/≤0. */

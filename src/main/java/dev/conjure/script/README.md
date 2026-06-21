@@ -38,8 +38,8 @@ as target. One script per slot serves all of them.
 | `ctx.getLevel()` / `ctx.getPlayer()` | The real `net.minecraft` `Level` / `Player` — call any MC API on them |
 | `ctx.getTargetEntity()` / `ctx.getTargetPos()` / `ctx.getHand()` | The hit mob (nullable), target block pos (nullable), and interaction hand |
 | `ctx.applyEffect(name)` | Run a reusable effect script `effects/<name>.js` against this same `ctx` |
-| `ctx.nearbyEntities(radius)` | Array of living entities near the player (iterate with a `for` loop) |
-| `ctx.hurtEntity(e, amt)` / `ctx.knockbackEntity(e, p)` / `ctx.effectEntity(e, id, s, amp)` | Act on an entity from `nearbyEntities` / `getTargetEntity()` |
+| `ctx.damageNearby(r, amt)` / `ctx.effectNearby(r, id, s, amp)` / `ctx.knockbackNearby(r, p)` | Affect ALL mobs within radius (loops internally — no array footgun) |
+| `ctx.hurtEntity(e, amt)` / `ctx.knockbackEntity(e, p)` / `ctx.effectEntity(e, id, s, amp)` | Act on a single entity (e.g. `ctx.getTargetEntity()`) |
 | `ctx.setBlockAt(x, y, z, id)` / `ctx.particle(id, x, y, z, n)` / `ctx.summon(id, x, y, z)` | Place a block / spawn a simple particle / summon an entity at world coords |
 | `ctx.message(text)` / `ctx.getPlayerName()` | Chat message / player name |
 | `ctx.giveItem(id, count)` / `ctx.consumeHeld()` | Give items by registry id; consume one held item (no-op in creative) |

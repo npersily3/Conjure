@@ -17,7 +17,7 @@ executor) so the game thread is never blocked.
 | `ModService.java` | Multi-piece orchestrator. Runs `ModPlannerAgent` on a `conjure-mod-planner` daemon thread to decompose a description into pieces, then enqueues each piece onto `GenerationService`. Two modes: `buildMod` (always-expansive) and `build` (auto-mode for `/conjure new`). |
 | `DynamicPackManager.java` | Owns the on-disk pack at `<gamedir>/conjure/generated/` (registered as both resource pack and datapack). Per-kind write methods for cube textures/models/blockstates/item-models, for slab/stairs/wall assets (which reuse a base texture), and `writeActivatableAssets` (two textures + a two-variant blockstate for stateful off/on blocks). Generic `write`/`writePngAt` helpers for custom paths (recipes use `write`). |
 | `RecipeTemplates.java` | Deterministic recipe JSON builders — shaped/shapeless/smelting/blasting/smithing/stonecutting/campfire — plus material-family wiring (`writeFamily`). Runnable self-check in `main`. |
-| `LootTableTemplates.java` | Writes block loot-table JSON (`writeSelfDrop` → the block drops itself) to `data/conjure/loot_table/blocks/<id>.json` so conjured blocks drop in survival. Self-check in `main`. |
+| `LootTableTemplates.java` | Writes a self-drop block loot table (`writeSelfDrop`) to `data/conjure/loot_table/blocks/<id>.json` so conjured blocks drop in survival. |
 | `PixelTexture.java` | PNG I/O + post-processing: `fromPng(bytes, size, kind)` downscales and, per kind, masks an item's background to transparent (border-sampled flood-fill), and for BLOCK/FLUID hard-downscales to 16×16, makes the texture seamlessly tileable, and palette-quantizes for a flat 16-bit look. `writePng`/`parseColor` helpers; self-check in `main`. |
 
 ## Sub-packages
