@@ -149,26 +149,6 @@ public final class LogicAgent {
         return stripFences(raw);
     }
 
-    /**
-     * Behavior script for a STATEFUL (ACTIVATABLE) block's bare right-click. For a lock-like block
-     * (safe/vault) this is a fixed, reliable template — no model round-trip — that keeps the block
-     * locked on an empty-handed click (a matching key item opens it via {@code ctx.setBlockActive})
-     * but lets a player close it back up once open. ponytail: deterministic over a flaky LLM call;
-     * give it a model-authored variant only if richer, themed lock messages prove worth the call.
-     */
-    public String generateStateful(String prompt, boolean lock) {
-        if (!lock) return ""; // free-toggling blocks (doors/lamps) need no script — the block flips itself
-        return """
-                if (ctx.getBlockActive()) {
-                    ctx.setBlockActive(false);
-                    ctx.message("You close it.");
-                } else {
-                    ctx.message("It's locked. You need the right key.");
-                    ctx.playSound("minecraft:block.iron_door.close");
-                }
-                """;
-    }
-
     // -------------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------------

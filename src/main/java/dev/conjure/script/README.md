@@ -3,44 +3,52 @@
 This package implements the behavior-script execution layer. Because the JVM cannot load
 AI-authored compiled Java, behavior is interpreted JavaScript (Mozilla Rhino). The seam is
 filesystem-based: generation writes `<gamedir>/conjure/generated/scripts/<id>.js`; shell classes
-invoke `ScriptRuntime.run(id, ctx)` on right-click.
+invoke `ScriptRuntime.run(id, ctx)` on an interaction.
 
-The sandbox is strict because it runs AI-written code in-process. See `ScriptRuntime` for the
-full sandbox design (ClassShutter, instruction budget, interpreted mode).
+**Sandbox philosophy (changed):** rather than a fixed menu of pre-baked Java "verbs", scripts now
+get **direct access to the real Minecraft API**. The `ClassShutter` allows `net.minecraft.*` (plus a
+small set of `java.lang` value types and the `ScriptContext` bridge) and denies everything else, so
+`Runtime`, `System`, `Thread`, reflection and IO remain blocked. The instruction budget and
+interpreted mode still bound runaway scripts. `ctx` is now a thin layer of **generic** helpers plus
+raw accessors (`getLevel()`, `getPlayer()`, …) — the model expresses any effect (lightning, AoE,
+particles, summons) with real MC calls instead of a bespoke verb.
+
+`// ponytail:` `net.minecraft` is broad — a script can reach `level.getServer()`. Accepted for
+single-player untrusted AI code; tighten to a per-class denylist if dedicated-server sync lands.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `ScriptRuntime.java` | Singleton that loads, compiles (cached by scriptId + file mtime), and executes behavior scripts in a hardened Rhino sandbox: `ClassShutter` denies all Java class access, interpreted mode ensures the instruction observer fires, and a 100 k-instruction budget aborts infinite loops. |
-| `ScriptContext.java` | The `ctx` host object injected into every script. Provides the whitelisted gameplay API (see table below). A context optionally carries a **target block** (the block a `useOn` item clicked, or a block running its own script) and a **target entity** (a mob a weapon hit); target-aware verbs no-op when their target is absent, so the same script is safe across hooks. No Java imports, no IO, no reflection. |
+| `ScriptRuntime.java` | Singleton that loads, compiles (cached by scriptId + file mtime), and executes behavior scripts in a hardened Rhino sandbox: allowlist `ClassShutter`, interpreted mode (so the instruction observer fires), and a 100 k-instruction budget. Also resolves + runs **named reusable effects** from `<gamedir>/conjure/generated/effects/<name>.js` (`runEffect`). |
+| `ScriptContext.java` | The `ctx` host object injected into every script: a few generic gameplay helpers plus raw accessors that return real `net.minecraft` objects. Carries a **trigger** tag (`use`/`useOnBlock`/`hitEntity`/`swing`) and optional **target block** / **target entity**; target-aware helpers no-op when their target is absent. No imports, no IO, no reflection. |
 | `ScriptException.java` | Checked exception thrown by `ScriptRuntime` when a script file is missing or throws at runtime. Callers catch it, log it, and surface a short message to the player. |
 
-Hooks that run a script: an item right-clicked **in the air** (`use`, no target), right-clicked
-**on a block** (`useOn`, target block + clicked face), or used to **hit a mob** (`hurtEnemy`, target
-entity); and a stateful block's own right-click (target block = itself). One script per slot serves
-all of them.
+Hooks that run a script, each tagged via `ctx.trigger()`: right-click **in the air** (`use`),
+right-click **on a block** (`useOnBlock`, target block + clicked face), **hit a mob**
+(`hitEntity`, target entity), and a **swing in empty air** (`swing`, fires even on a miss — driven
+by the `dev.conjure.network` swing packet). A stateful block's own right-click runs with the block
+as target. One script per slot serves all of them.
 
 ## ctx API summary
 
 | Method | Effect |
 |--------|--------|
-| `ctx.message(text)` | Send a chat message to the interacting player |
-| `ctx.getPlayerName()` | Returns player name as a JS string |
-| `ctx.giveItem(itemId, count)` | Give items by registry id (e.g. `"minecraft:diamond"`) |
-| `ctx.consumeHeld()` | Consume one of the held item (single-use items); no-op in creative |
+| `ctx.trigger()` | Why the script ran: `"use"`, `"useOnBlock"`, `"hitEntity"`, or `"swing"` |
+| `ctx.getLevel()` / `ctx.getPlayer()` | The real `net.minecraft` `Level` / `Player` — call any MC API on them |
+| `ctx.getTargetEntity()` / `ctx.getTargetPos()` / `ctx.getHand()` | The hit mob (nullable), target block pos (nullable), and interaction hand |
+| `ctx.applyEffect(name)` | Run a reusable effect script `effects/<name>.js` against this same `ctx` |
+| `ctx.message(text)` / `ctx.getPlayerName()` | Chat message / player name |
+| `ctx.giveItem(id, count)` / `ctx.consumeHeld()` | Give items by registry id; consume one held item (no-op in creative) |
 | `ctx.heal(amount)` / `ctx.damage(amount)` | Restore / deal HP to the player (2.0 = 1 heart) |
 | `ctx.giveEffect(id, seconds, amp)` | Apply a potion effect to the player (`amp` 0 = level I) |
-| `ctx.ignite(seconds)` | Set the player on fire (clamped 0–60 s) |
-| `ctx.launch(power)` / `ctx.dashForward(power)` | Fling the player up / dash in look direction (0–4) |
-| `ctx.lightning()` | Strike lightning at the player |
-| `ctx.explode(power)` | Explosion that damages mobs but breaks **no** blocks (0–8) |
+| `ctx.applyVelocity(x, y, z)` | Add velocity to the player (client-resynced) |
 | `ctx.playSound(soundId)` | Play a sound at the player |
-| `ctx.spawnParticleHere()` | Burst of HEART particles at player position |
-| `ctx.hasTargetEntity()` | True when a mob was hit (weapon hook) |
-| `ctx.damageTarget(amt)` / `ctx.igniteTarget(s)` / `ctx.knockbackTarget(p)` / `ctx.effectTarget(id,s,amp)` | Act on the hit mob |
-| `ctx.hasTargetBlock()` | True when there is a target block |
-| `ctx.getBlockActive()` / `ctx.setBlockActive(bool)` | Read / toggle a stateful (ACTIVATABLE) block — open a door, unlock a safe |
+| `ctx.hasTargetEntity()` / `ctx.hasTargetBlock()` | Whether a mob / block target is present |
+| `ctx.getBlockActive()` / `ctx.setBlockActive(bool)` | Read / toggle a stateful (ACTIVATABLE) block |
 | `ctx.breakTargetBlock()` / `ctx.setTargetBlock(id)` / `ctx.placeOnFace(id)` | Break, replace, or place against the target block |
 | `ctx.heldStr(key)` / `ctx.heldNum(key)` | Read a tunable on the held item's slot definition |
 | `ctx.targetBlockStr(key)` / `ctx.targetBlockNum(key)` | Read a tunable on the target block's slot definition (e.g. a safe's `keyId`) |
+
+Anything richer (summon an entity, area effects, particles, world edits) is written directly against
+`ctx.getLevel()` / `ctx.getPlayer()` with the real Minecraft API.

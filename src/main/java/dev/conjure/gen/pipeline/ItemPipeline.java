@@ -35,10 +35,10 @@ public final class ItemPipeline implements GenerationPipeline {
      * Runs the item pipeline against a specific slot index. Used both for new generation and for
      * {@code /conjure edit} regeneration (which preserves the slot id so existing stacks stay valid).
      *
-     * <p>DataAgent runs FIRST so its description can enrich the texture prompt: the display name
-     * and description together give the image backend more visual context than the raw user prompt
-     * alone (e.g. "Ember Dagger — a blade forged from volcanic obsidian" is richer than just
-     * "fire dagger"). The description is passed as the {@code visualIntent} parameter to
+     * <p>DataAgent runs FIRST so its visual intent can enrich the texture prompt: it describes what
+     * the texture should DEPICT (colours, shape, motifs), giving the image backend more visual
+     * context than the raw user prompt alone (e.g. "glowing obsidian blade with ember veins" is
+     * richer than just "fire dagger"). It is passed as the {@code visualIntent} parameter to
      * {@link TextureAgent#generate(String, String, TextureKind)}.
      */
     public void runForSlot(int slot, String prompt, Consumer<String> feedback) throws Exception {
@@ -49,9 +49,9 @@ public final class ItemPipeline implements GenerationPipeline {
         feedback.accept("§7[Conjure] Generating name…");
         DataAgent.Result data = new DataAgent().generate(prompt);
 
-        // Feed the description as visual intent so the image backend gets richer context
+        // Feed the visual intent (what the texture should DEPICT) so the image backend gets richer context
         feedback.accept("§7[Conjure] Generating texture…");
-        int[][] argb = new TextureAgent().generate(prompt, data.description(), TextureKind.ITEM);
+        int[][] argb = new TextureAgent().generate(prompt, data.visualIntent(), TextureKind.ITEM);
         DynamicPackManager.writeItemTexture(slot, argb);
         DynamicPackManager.writeItemModel(slot);
 
