@@ -33,7 +33,8 @@ public final class DataAgent {
                              stone, marble, brick, wood, metal block; false for items, tools, ores,
                              machines, plants, glass, magical orbs, etc.>,
               "variants": [<for a material, the subset of "smooth","bricks","slab","stairs","wall"
-                           that make sense; otherwise []>]
+                           that make sense; otherwise []>],
+              "activeVisual": "<for an interactive/stateful block, one short phrase describing what the ON or activated state should look like — colours, glow, open; empty string if it should not visibly change>"
             }
             Keep names immersive and appropriate for a fantasy game.
             """;
@@ -41,12 +42,15 @@ public final class DataAgent {
     /**
      * Result record returned to the orchestrator.
      *
-     * @param displayName player-facing name
-     * @param description short flavour description stored in {@code strings.get("description")}
-     * @param isMaterial  true if this is a building-material block eligible for family expansion
-     * @param variants    requested shaped variants (subset of {@link #KNOWN_VARIANTS}); empty if none
+     * @param displayName  player-facing name
+     * @param description  short flavour description stored in {@code strings.get("description")}
+     * @param isMaterial   true if this is a building-material block eligible for family expansion
+     * @param variants     requested shaped variants (subset of {@link #KNOWN_VARIANTS}); empty if none
+     * @param activeVisual short phrase describing the ON/activated visual state (colours/glow/open);
+     *                     empty string if the block should not visibly change when activated
      */
-    public record Result(String displayName, String description, boolean isMaterial, Set<String> variants) {}
+    public record Result(String displayName, String description, boolean isMaterial, Set<String> variants,
+                         String activeVisual) {}
 
     /**
      * Calls the text model to produce a name and description for {@code prompt}.
@@ -73,7 +77,8 @@ public final class DataAgent {
                 if (KNOWN_VARIANTS.contains(v)) variants.add(v);
             }
         }
-        return new Result(name, desc, isMaterial, variants);
+        String activeVisual = obj.has("activeVisual") ? obj.get("activeVisual").getAsString() : "";
+        return new Result(name, desc, isMaterial, variants, activeVisual);
     }
 
     public DataAgent() {}
