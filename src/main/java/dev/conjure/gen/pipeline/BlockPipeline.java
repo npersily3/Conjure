@@ -89,7 +89,7 @@ public final class BlockPipeline implements GenerationPipeline {
         int[][] argb = new TextureAgent().generate(prompt, TextureKind.BLOCK);
 
         feedback.accept("§7[Conjure] Generating name…");
-        DataAgent.Result data = new DataAgent().generate(prompt);
+        DataAgent.Result data = new DataAgent().generate(prompt, SlotKind.BLOCK);
 
         // --- Building material → expand into a family with survival recipes ---
         if (data.isMaterial() && Config.RECIPES_ENABLED.get()) {
@@ -183,13 +183,13 @@ public final class BlockPipeline implements GenerationPipeline {
                 def.strings.put("interaction", "stateful");
                 feedback.accept("§7[Conjure] Generating stateful behavior…");
                 String scriptId = "block_slot_" + slot;
-                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent()));
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent(), SlotKind.BLOCK));
                 def.behaviorScriptId = scriptId;
                 def.strings.put("keyId", "conjure_key_" + slot);
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");
-                String js       = new LogicAgent().generate(prompt, data.usageIntent());
+                String js       = new LogicAgent().generate(prompt, data.usageIntent(), SlotKind.BLOCK);
                 String scriptId = "block_slot_" + slot;
                 PipelineSupport.writeScript(scriptId, js);
                 def.behaviorScriptId = scriptId;
@@ -204,11 +204,15 @@ public final class BlockPipeline implements GenerationPipeline {
 
         PipelineSupport.commit(def);
 
+        // Report the created id so a mod-economy chain can craft the next piece from this block.
+        dev.conjure.gen.GenerationContext gc = dev.conjure.gen.GenerationContext.current();
+        if (gc != null) gc.setCreatedId("conjure:block_slot_" + slot);
+
         // Loot table: always write so breaking the block in survival yields a drop.
         writeLootTable("block_slot_" + slot, "conjure:block_slot_" + slot);
 
-        // Survival obtainability: varied recipe type chosen by the AI (shapeless, shaped,
-        // smelting, blasting, smithing, or stonecutting) so not every block gets stonecutting.
+        // Survival obtainability: a mod-economy chain recipe when materials were threaded in, else a
+        // varied AI-chosen recipe (shapeless/shaped/smelting/blasting/smithing/stonecutting).
         if (Config.RECIPES_ENABLED.get()) {
             writeObtainabilityRecipe("block_slot_" + slot, prompt, "conjure:block_slot_" + slot, feedback);
         }
@@ -237,7 +241,7 @@ public final class BlockPipeline implements GenerationPipeline {
         int[][] argb = new TextureAgent().generate(prompt, TextureKind.BLOCK);
 
         feedback.accept("§7[Conjure] Generating name…");
-        DataAgent.Result data = new DataAgent().generate(prompt);
+        DataAgent.Result data = new DataAgent().generate(prompt, SlotKind.BLOCK);
 
         boolean machineSlot = slot >= MACHINE_OFFSET
                 && slot < MACHINE_OFFSET + BlockArchetype.MACHINE.count;
@@ -296,14 +300,14 @@ public final class BlockPipeline implements GenerationPipeline {
                 def.strings.put("interaction", "stateful");
                 feedback.accept("§7[Conjure] Generating stateful behavior…");
                 String scriptId = "block_slot_" + slot;
-                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent()));
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent(), SlotKind.BLOCK));
                 def.behaviorScriptId = scriptId;
                 def.strings.put("keyId", "conjure_key_" + slot);
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");
                 String scriptId = "block_slot_" + slot;
-                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent()));
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent(), SlotKind.BLOCK));
                 def.behaviorScriptId = scriptId;
                 def.strings.put("interaction", "script");
             }
@@ -422,19 +426,13 @@ public final class BlockPipeline implements GenerationPipeline {
                                                   Consumer<String> feedback) {
         try {
             feedback.accept("§7[Conjure] Writing recipe…");
-            RecipeAgent.ObtainabilityResult choice = new RecipeAgent().chooseRecipe(prompt);
-            java.util.List<String> ing = choice.ingredients();
-            int count = choice.outputCount();
-            switch (choice.type()) {
-                case SHAPELESS    -> RecipeTemplates.writeShapeless(recipeId, ing, resultId, count);
-                case SHAPED       -> RecipeTemplates.writeShaped(recipeId, ing.get(0), resultId, count);
-                case SMELTING     -> RecipeTemplates.writeSmelting(recipeId, ing.get(0), resultId, count);
-                case BLASTING     -> RecipeTemplates.writeBlasting(recipeId, ing.get(0), resultId, count);
-                case SMITHING     -> RecipeTemplates.writeSmithing(recipeId,
-                                        ing.get(0), ing.get(1), ing.get(2), resultId, count);
-                case STONECUTTING -> RecipeTemplates.writeStonecutting(recipeId, ing.get(0), resultId, count);
+            dev.conjure.gen.GenerationContext gc = dev.conjure.gen.GenerationContext.current();
+            if (gc != null && !gc.ingredientIds().isEmpty()) {
+                RecipeTemplates.writeChain(recipeId, resultId, gc.ingredientIds(), gc.smelt());
+            } else {
+                RecipeAgent.ObtainabilityResult choice = new RecipeAgent().chooseRecipe(prompt, SlotKind.BLOCK);
+                RecipeTemplates.writeChosen(recipeId, resultId, choice);
             }
-            Conjure.LOGGER.info("[Conjure] {} obtainability: {} ({})", recipeId, choice.type(), ing);
             PipelineSupport.reloadData();
         } catch (Exception e) {
             Conjure.LOGGER.warn("[Conjure] obtainability recipe skipped for {}: {}", recipeId, e.getMessage());

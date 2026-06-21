@@ -110,7 +110,7 @@ public final class StructurePipeline implements GenerationPipeline {
         JsonArray layers = layout.has("layers") ? layout.get("layers").getAsJsonArray() : new JsonArray();
 
         feedback.accept("§7[Conjure] Generating name…");
-        DataAgent.Result data = new DataAgent().generate(prompt);
+        DataAgent.Result data = new DataAgent().generate(prompt, SlotKind.STRUCTURE);
 
         SlotDefinition def = new SlotDefinition(SlotKind.STRUCTURE, slot);
         def.displayName  = data.displayName();

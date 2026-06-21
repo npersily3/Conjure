@@ -54,7 +54,7 @@ public final class FluidPipeline implements GenerationPipeline {
         FluidAssets.writeBucketAssets(slot, stillArgb);
 
         feedback.accept("§7[Conjure] Generating fluid name…");
-        DataAgent.Result data = new DataAgent().generate(prompt + " liquid");
+        DataAgent.Result data = new DataAgent().generate(prompt + " liquid", SlotKind.FLUID);
 
         SlotDefinition def = new SlotDefinition(SlotKind.FLUID, slot);
         def.displayName  = data.displayName();

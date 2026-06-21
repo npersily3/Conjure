@@ -1,16 +1,20 @@
 package dev.conjure.gen.pipeline;
 
 import dev.conjure.Conjure;
+import dev.conjure.Config;
 import dev.conjure.ai.ProviderFactory;
 import dev.conjure.ai.TextureKind;
 import dev.conjure.ai.agents.DataAgent;
 import dev.conjure.ai.agents.LogicAgent;
+import dev.conjure.ai.agents.RecipeAgent;
 import dev.conjure.ai.agents.TextureAgent;
 import dev.conjure.content.IntentTooltip;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
 import dev.conjure.gen.DynamicPackManager;
+import dev.conjure.gen.GenerationContext;
+import dev.conjure.gen.RecipeTemplates;
 import dev.conjure.registry.ConjureItems;
 
 import java.util.function.Consumer;
@@ -47,7 +51,7 @@ public final class ItemPipeline implements GenerationPipeline {
 
         // DataAgent first — its description enriches the texture prompt
         feedback.accept("§7[Conjure] Generating name…");
-        DataAgent.Result data = new DataAgent().generate(prompt);
+        DataAgent.Result data = new DataAgent().generate(prompt, SlotKind.ITEM);
 
         // Feed the visual intent (what the texture should DEPICT) so the image backend gets richer context
         feedback.accept("§7[Conjure] Generating texture…");
@@ -57,7 +61,7 @@ public final class ItemPipeline implements GenerationPipeline {
 
         feedback.accept("§7[Conjure] Generating behavior script…");
         String scriptId = "item_" + slot;
-        PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent()));
+        PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt, data.usageIntent(), SlotKind.ITEM));
 
         SlotDefinition def = new SlotDefinition(SlotKind.ITEM, slot);
         def.displayName      = data.displayName();
@@ -69,6 +73,27 @@ public final class ItemPipeline implements GenerationPipeline {
         def.strings.put(IntentTooltip.USAGE, data.usageIntent());
 
         PipelineSupport.commit(def);
+
+        String resultId = "conjure:item_slot_" + slot;
+        GenerationContext gc = GenerationContext.current();
+        if (gc != null) gc.setCreatedId(resultId);
+
+        // Items are crafted goods. In a mod economy, craft from the chained materials; otherwise
+        // pick a varied vanilla-ingredient recipe. Best-effort — never fail the item.
+        if (Config.RECIPES_ENABLED.get()) {
+            try {
+                feedback.accept("§7[Conjure] Writing recipe…");
+                if (gc != null && !gc.ingredientIds().isEmpty()) {
+                    RecipeTemplates.writeChain("item_slot_" + slot, resultId, gc.ingredientIds(), gc.smelt());
+                } else {
+                    RecipeTemplates.writeChosen("item_slot_" + slot, resultId,
+                            new RecipeAgent().chooseRecipe(prompt, SlotKind.ITEM));
+                }
+                PipelineSupport.reloadData();
+            } catch (Exception e) {
+                Conjure.LOGGER.warn("[Conjure] item recipe skipped for item_slot_{}: {}", slot, e.getMessage());
+            }
+        }
 
         feedback.accept("Conjured '" + data.displayName() + "' → item slot #" + slot
                 + ". Try: /give @s conjure:item_slot_" + slot);

@@ -82,6 +82,7 @@ public class ConjureActivatableBlock extends ConjureBlock {
             } catch (ScriptException e) {
                 LOGGER.error("[Conjure] Script error for block slot {} (scriptId='{}'): {}",
                         slotIndex, scriptId, e.getMessage(), e);
+                dev.conjure.script.ScriptErrorLog.record(scriptId, e.getMessage());
                 player.displayClientMessage(
                         Component.literal("[Conjure] Script error: " + e.getMessage()), false);
                 return InteractionResult.FAIL;

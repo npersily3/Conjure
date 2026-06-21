@@ -38,7 +38,7 @@ public final class WorldgenPipeline implements GenerationPipeline {
         DynamicPackManager.writeBlockItemModel(slot);
 
         feedback.accept("§7[Conjure] Generating name + worldgen parameters…");
-        DataAgent.Result data = new DataAgent().generate(prompt);
+        DataAgent.Result data = new DataAgent().generate(prompt, SlotKind.BLOCK);
         String blockId = "conjure:block_slot_" + slot;
         WorldgenAgent.Result wg = new WorldgenAgent().generate(prompt, blockId);
 
@@ -53,6 +53,9 @@ public final class WorldgenPipeline implements GenerationPipeline {
         def.strings.put("description", data.description());
         def.strings.put("interaction", "plain");
         def.strings.put(IntentTooltip.WORLDGEN, wg.worldgenIntent());
+
+        dev.conjure.gen.GenerationContext gc = dev.conjure.gen.GenerationContext.current();
+        if (gc != null) gc.setCreatedId("conjure:block_slot_" + slot);
 
         PipelineSupport.commit(def);
         PipelineSupport.reloadData();

@@ -128,8 +128,10 @@ public class ConjureItem extends Item {
         } catch (ScriptException e) {
             LOGGER.error("[Conjure] Script error for item slot {} (scriptId='{}'): {}",
                     slotIndex, scriptId, e.getMessage(), e);
+            dev.conjure.script.ScriptErrorLog.record(scriptId, e.getMessage());
             player.displayClientMessage(
-                    Component.literal("[Conjure] Script error: " + e.getMessage()), false);
+                    Component.literal("[Conjure] Script error: " + e.getMessage()
+                            + " §7(/conjure fixscripts to repair)"), false);
             return false;
         }
     }

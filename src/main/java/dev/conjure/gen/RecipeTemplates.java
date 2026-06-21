@@ -2,6 +2,7 @@ package dev.conjure.gen;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.conjure.ai.agents.RecipeAgent;
 
 import java.io.IOException;
 import java.util.List;
@@ -131,6 +132,38 @@ public final class RecipeTemplates {
     public static void writeSmithing(String recipeId, String baseId, String additionId,
                                      String templateId, String resultId, int count) throws IOException {
         write(recipeId, smithingJson(baseId, additionId, templateId, resultId, count));
+    }
+
+    /**
+     * Dispatches a {@link RecipeAgent.ObtainabilityResult} to the matching builder above — the single
+     * place both ItemPipeline and BlockPipeline share for "write whatever recipe the agent chose".
+     */
+    public static void writeChosen(String recipeId, String resultId,
+                                   RecipeAgent.ObtainabilityResult choice) throws IOException {
+        List<String> ing = choice.ingredients();
+        int count = choice.outputCount();
+        switch (choice.type()) {
+            case SHAPELESS    -> writeShapeless(recipeId, ing, resultId, count);
+            case SHAPED       -> writeShaped(recipeId, ing.get(0), resultId, count);
+            case SMELTING     -> writeSmelting(recipeId, ing.get(0), resultId, count);
+            case BLASTING     -> writeBlasting(recipeId, ing.get(0), resultId, count);
+            case SMITHING     -> writeSmithing(recipeId, ing.get(0), ing.get(1), ing.get(2), resultId, count);
+            case STONECUTTING -> writeStonecutting(recipeId, ing.get(0), resultId, count);
+        }
+    }
+
+    /**
+     * Mod-economy recipe: craft (or smelt) {@code resultId} from the supplied already-generated
+     * {@code ingredientIds}. A single ingredient with {@code smelt} true becomes a furnace recipe
+     * (ore → ingot); otherwise a shapeless craft consuming all ingredients.
+     */
+    public static void writeChain(String recipeId, String resultId, List<String> ingredientIds,
+                                  boolean smelt) throws IOException {
+        if (smelt && ingredientIds.size() == 1) {
+            writeSmelting(recipeId, ingredientIds.get(0), resultId, 1);
+        } else {
+            writeShapeless(recipeId, ingredientIds, resultId, 1);
+        }
     }
 
     private static void write(String recipeId, String json) throws IOException {

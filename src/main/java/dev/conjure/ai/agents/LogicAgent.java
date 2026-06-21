@@ -1,8 +1,10 @@
 package dev.conjure.ai.agents;
 
 import com.mojang.logging.LogUtils;
+import dev.conjure.ai.Prompts;
 import dev.conjure.ai.ProviderFactory;
 import dev.conjure.ai.TextModelProvider;
+import dev.conjure.content.SlotKind;
 import dev.conjure.script.ScriptRuntime;
 import org.slf4j.Logger;
 
@@ -165,7 +167,12 @@ public final class LogicAgent {
      * @throws Exception if the model call fails
      */
     public String generate(String prompt) throws Exception {
-        return generate(prompt, "");
+        return generate(prompt, "", SlotKind.ITEM);
+    }
+
+    /** Item-default overload; prefer {@link #generate(String, String, SlotKind)}. */
+    public String generate(String prompt, String usageIntent) throws Exception {
+        return generate(prompt, usageIntent, SlotKind.ITEM);
     }
 
     /**
@@ -179,33 +186,67 @@ public final class LogicAgent {
      * @return raw JavaScript source to be written as {@code <id>.js}
      * @throws Exception if the model call fails
      */
-    public String generate(String prompt, String usageIntent) throws Exception {
+    public String generate(String prompt, String usageIntent, SlotKind kind) throws Exception {
         TextModelProvider provider = ProviderFactory.text();
-        StringBuilder user = new StringBuilder("Write a behavior script for this Minecraft item: ")
-                .append(prompt);
+        String system = Prompts.system(kind, SYSTEM);
+        StringBuilder user = new StringBuilder("Write a behavior script for this Minecraft ")
+                .append(kind == SlotKind.BLOCK ? "block" : "item").append(": ").append(prompt);
         if (usageIntent != null && !usageIntent.isBlank() && !usageIntent.equalsIgnoreCase("none")) {
             user.append("\n\nImplement EXACTLY this behavior spec (trigger: action): ").append(usageIntent);
         }
 
-        String script = stripFences(provider.complete(SYSTEM, user.toString()));
+        String script = stripFences(provider.complete(system, user.toString()));
 
-        // Compile-check + one repair retry.
-        String error = ScriptRuntime.get().validate(script);
+        // Static review (real ctx methods + valid ids) then compile-check; one targeted repair retry.
+        String error = reviewError(script);
         if (error == null) return script;
 
-        String repairMsg = "Your previous script failed to compile in the Rhino JavaScript sandbox.\n"
-                + "Compile error: " + error + "\n"
+        String repairMsg = "Your previous script has problems and must be fixed before it can ship.\n"
+                + "Problems:\n" + error + "\n"
                 + "Your previous script was:\n" + script + "\n\n"
-                + "The usual cause is writing Java instead of JavaScript. Fix it: use only `var` (no "
-                + "type declarations), no `new net.minecraft...()`, no arrow functions `=>`, no method "
-                + "references `::`, no java.util/java.io/java.lang.reflect. Respond with ONLY the "
-                + "corrected raw JavaScript.";
-        String repaired = stripFences(provider.complete(SYSTEM, repairMsg));
-        String stillBad = ScriptRuntime.get().validate(repaired);
+                + "Fix ALL listed problems. Use only the documented ctx.* methods and only valid ids. "
+                + "Remember: JavaScript not Java — use `var`, no `new net.minecraft...()`, no `=>`, no "
+                + "`::`, no java.util/java.io. Respond with ONLY the corrected raw JavaScript.";
+        String repaired = stripFences(provider.complete(system, repairMsg));
+        String stillBad = reviewError(repaired);
         if (stillBad != null) {
-            LOGGER.warn("[Conjure] behavior script still invalid after one repair: {}", stillBad);
+            LOGGER.warn("[Conjure] behavior script still has issues after one repair: {}", stillBad);
         }
         return repaired;
+    }
+
+    /**
+     * Repairs an EXISTING behavior script that threw at runtime in-game (used by
+     * {@code /conjure fixscripts} draining {@link dev.conjure.script.ScriptErrorLog}). One fix pass
+     * against the runtime error; the result is re-validated by {@link #reviewError} and only
+     * returned if it is clean — otherwise the original is kept so a bad fix never makes it worse.
+     */
+    public String fixScript(String source, String runtimeError, SlotKind kind) throws Exception {
+        TextModelProvider provider = ProviderFactory.text();
+        String system = Prompts.system(kind, SYSTEM);
+        String msg = "This Conjure behavior script threw an error while running in-game. Fix it so it "
+                + "no longer errors and still does something thematically sensible.\n"
+                + "Runtime error: " + runtimeError + "\n"
+                + "Current script:\n" + source + "\n\n"
+                + "Use only the documented ctx.* methods and only valid ids; JavaScript, not Java. "
+                + "Respond with ONLY the corrected raw JavaScript.";
+        String fixed = stripFences(provider.complete(system, msg));
+        return reviewError(fixed) == null ? fixed : source;
+    }
+
+    /**
+     * Combined pre-release gate: static review (real ctx methods + valid registry ids via
+     * {@link ScriptReviewer}) plus the Rhino compile-check ({@link ScriptRuntime#validate}).
+     * Returns {@code null} when the script is clean, or a newline-separated list of problems.
+     */
+    private static String reviewError(String script) {
+        StringBuilder problems = new StringBuilder();
+        String compile = ScriptRuntime.get().validate(script);
+        if (compile != null) problems.append("- compile error: ").append(compile).append('\n');
+        for (String issue : ScriptReviewer.review(script)) {
+            problems.append("- ").append(issue).append('\n');
+        }
+        return problems.isEmpty() ? null : problems.toString().stripTrailing();
     }
 
     // -------------------------------------------------------------------------

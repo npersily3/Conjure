@@ -96,6 +96,51 @@ public final class ConjureCommands {
                                             return 1;
                                         })))
 
+                        // /conjure fixscripts — drain runtime script errors and let the fixer agent repair them
+                        .then(Commands.literal("fixscripts")
+                                .executes(ctx -> {
+                                    CommandSourceStack source = ctx.getSource();
+                                    MinecraftServer server = source.getServer();
+                                    java.util.Map<String, String> errors = dev.conjure.script.ScriptErrorLog.drain();
+                                    if (errors.isEmpty()) {
+                                        source.sendSuccess(() -> Component.literal("§7No script errors to fix."), false);
+                                        return 1;
+                                    }
+                                    source.sendSuccess(() -> Component.literal("§7Fixing " + errors.size() + " script(s)…"), false);
+                                    Thread t = new Thread(() -> {
+                                        GenerationStatus.begin();
+                                        int fixed = 0;
+                                        try {
+                                            java.nio.file.Path dir = net.neoforged.fml.loading.FMLPaths.GAMEDIR.get()
+                                                    .resolve("conjure").resolve("generated").resolve("scripts");
+                                            for (var e : errors.entrySet()) {
+                                                String id = e.getKey();
+                                                try {
+                                                    java.nio.file.Path f = dir.resolve(id + ".js");
+                                                    if (!java.nio.file.Files.exists(f)) continue;
+                                                    String src = java.nio.file.Files.readString(f);
+                                                    SlotKind kind = id.startsWith("item_") ? SlotKind.ITEM : SlotKind.BLOCK;
+                                                    String repaired = new dev.conjure.ai.agents.LogicAgent().fixScript(src, e.getValue(), kind);
+                                                    if (!repaired.equals(src)) {
+                                                        PipelineSupport.writeScript(id, repaired);
+                                                        fixed++;
+                                                    }
+                                                } catch (Exception ex) {
+                                                    Conjure.LOGGER.warn("[Conjure] fixscripts failed for {}: {}", id, ex.getMessage());
+                                                }
+                                            }
+                                        } finally {
+                                            GenerationStatus.end();
+                                        }
+                                        final int n = fixed;
+                                        server.execute(() -> source.sendSystemMessage(Component.literal(
+                                                "§a[Conjure] §fRepaired " + n + " script(s). Re-use the item/block to test.")));
+                                    }, "conjure-fixscripts");
+                                    t.setDaemon(true);
+                                    t.start();
+                                    return 1;
+                                }))
+
                         // /conjure list
                         .then(Commands.literal("list")
                                 .executes(ctx -> {

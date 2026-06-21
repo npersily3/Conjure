@@ -2,8 +2,10 @@ package dev.conjure.ai.agents;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import dev.conjure.ai.Prompts;
 import dev.conjure.ai.ProviderFactory;
 import dev.conjure.ai.TextModelProvider;
+import dev.conjure.content.SlotKind;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -72,10 +74,16 @@ public final class DataAgent {
      * @throws Exception if the model call or JSON parse fails
      */
     public Result generate(String prompt) throws Exception {
+        return generate(prompt, SlotKind.ITEM);
+    }
+
+    /** As {@link #generate(String)} but with the per-kind purpose layered into the system prompt. */
+    public Result generate(String prompt, SlotKind kind) throws Exception {
         TextModelProvider provider = ProviderFactory.text();
-        String userMsg = "Name and describe this Minecraft item: " + prompt;
-        String raw = provider.complete(SYSTEM, userMsg);
-        JsonObject obj = JsonHelper.extractAndParse(raw, SYSTEM, provider, userMsg);
+        String system = Prompts.system(kind, SYSTEM);
+        String userMsg = "Name and describe this Minecraft thing: " + prompt;
+        String raw = provider.complete(system, userMsg);
+        JsonObject obj = JsonHelper.extractAndParse(raw, system, provider, userMsg);
 
         String name = obj.has("displayName") ? obj.get("displayName").getAsString() : "Conjured Item";
         String desc = obj.has("description") ? obj.get("description").getAsString() : "";

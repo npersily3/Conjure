@@ -61,7 +61,7 @@ public final class EntityPipeline implements GenerationPipeline {
 
         // --- Name (from DataAgent) --------------------------------------------
         feedback.accept("§7[Conjure] Generating entity name…");
-        DataAgent.Result data = new DataAgent().generate(prompt);
+        DataAgent.Result data = new DataAgent().generate(prompt, SlotKind.ENTITY);
 
         // --- Assemble SlotDefinition ------------------------------------------
         SlotDefinition def = new SlotDefinition(SlotKind.ENTITY, slot);

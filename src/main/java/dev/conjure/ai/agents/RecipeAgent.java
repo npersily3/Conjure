@@ -2,8 +2,10 @@ package dev.conjure.ai.agents;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import dev.conjure.ai.Prompts;
 import dev.conjure.ai.ProviderFactory;
 import dev.conjure.ai.TextModelProvider;
+import dev.conjure.content.SlotKind;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,10 +91,17 @@ public final class RecipeAgent {
      * model/parse failure.
      */
     public ObtainabilityResult chooseRecipe(String prompt) throws Exception {
+        return chooseRecipe(prompt, SlotKind.BLOCK);
+    }
+
+    /** As {@link #chooseRecipe(String)} but with the per-kind purpose layered into the prompt. */
+    public ObtainabilityResult chooseRecipe(String prompt, SlotKind kind) throws Exception {
         TextModelProvider provider = ProviderFactory.text();
-        String userMsg = "Choose the survival obtainability recipe for this Minecraft block: " + prompt;
-        String raw = provider.complete(OBTAIN_SYSTEM, userMsg);
-        JsonObject obj = JsonHelper.extractAndParse(raw, OBTAIN_SYSTEM, provider, userMsg);
+        String system = Prompts.system(kind, OBTAIN_SYSTEM);
+        String thing = (kind == SlotKind.BLOCK) ? "block" : "item";
+        String userMsg = "Choose the survival obtainability recipe for this Minecraft " + thing + ": " + prompt;
+        String raw = provider.complete(system, userMsg);
+        JsonObject obj = JsonHelper.extractAndParse(raw, system, provider, userMsg);
 
         RecipeType type = parseType(obj);
         List<String> ingredients = parseIngredients(obj, type);

@@ -2,9 +2,13 @@ package dev.conjure.gen;
 
 import dev.conjure.Conjure;
 import dev.conjure.ai.agents.ModPlannerAgent;
+import dev.conjure.content.SlotKind;
 import dev.conjure.gen.pipeline.PipelineSupport;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -34,7 +38,43 @@ public final class ModService {
      *                        must re-schedule to the server thread before touching game state
      */
     public static void buildMod(String modDescription, Consumer<String> feedback) {
-        build(modDescription, feedback, true);
+        Thread planner = new Thread(() -> {
+            try {
+                ModPlannerAgent.ModPlan plan = new ModPlannerAgent().planMod(modDescription);
+                List<ModPlannerAgent.Piece> ordered = plan.ordered();
+
+                feedback.accept("§7[Conjure] Mod plan (" + ordered.size() + " pieces, resource→product):");
+                for (ModPlannerAgent.Piece p : ordered) {
+                    feedback.accept("§7[Conjure]   [" + p.role().name().toLowerCase() + "] " + p.prompt());
+                }
+
+                // Generate in order, threading each created id to the pieces crafted from it.
+                Map<String, String> made = new LinkedHashMap<>();
+                for (ModPlannerAgent.Piece p : ordered) {
+                    List<String> ingredientIds = new ArrayList<>();
+                    for (String ref : p.from()) {
+                        String id = made.get(ref);
+                        if (id != null) ingredientIds.add(id);
+                    }
+                    boolean worldgenResource = p.role() == ModPlannerAgent.Role.RESOURCE
+                            && (p.kind() == null || p.kind() == SlotKind.BLOCK);
+                    boolean smelt = p.role() == ModPlannerAgent.Role.MATERIAL && ingredientIds.size() == 1;
+
+                    String created = GenerationService.generateForMod(
+                            p.prompt(), p.kind(), worldgenResource, ingredientIds, smelt, feedback);
+                    if (created != null && p.name() != null && !p.name().isBlank()) {
+                        made.put(p.name(), created);
+                    }
+                }
+                feedback.accept("§a[Conjure] §fMod complete (" + made.size()
+                        + " linked pieces). §7Ore resources spawn in new chunks after a world rejoin.");
+            } catch (Exception e) {
+                Conjure.LOGGER.error("Conjure mod planning failed for: {}", modDescription, e);
+                feedback.accept("Mod planning failed: " + PipelineSupport.describe(e));
+            }
+        }, "conjure-mod-planner");
+        planner.setDaemon(true);
+        planner.start();
     }
 
     /**

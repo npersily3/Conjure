@@ -9,14 +9,15 @@ the game thread is never blocked; feedback messages are posted back to the serve
 
 | File | Purpose |
 |------|---------|
-| `ConjureCommands.java` | Registers the `/conjure` sub-commands: `new`, `mod`, `list`, `edit`, `place`, `regenerate`, `delete`, and `nuke`. Includes a `parseKind` helper that maps `item`/`block`/`fluid`/`entity`/`structure` keywords to `SlotKind`. |
+| `ConjureCommands.java` | Registers the `/conjure` sub-commands: `new`, `mod`, `fixscripts`, `list`, `edit`, `place`, `regenerate`, `delete`, and `nuke`. Includes a `parseKind` helper that maps `item`/`block`/`fluid`/`entity`/`structure` keywords to `SlotKind`. |
 
 ## Sub-command summary
 
 | Command | Backend call | Notes |
 |---------|-------------|-------|
 | `/conjure new <prompt>` | `ModService.build(…, expansive=false)` | Single concrete prompt → one piece; themed/plural → many |
-| `/conjure mod <desc>` | `ModService.buildMod(…)` | Always decomposes into many pieces |
+| `/conjure mod <desc>` | `ModService.buildMod(…)` | Plans a gameplay-loop economy (resource→material→product) and generates in dependency order, wiring recipes to the generated ingredients |
+| `/conjure fixscripts` | drains `ScriptErrorLog` → `LogicAgent.fixScript` | Repairs behavior scripts that errored at runtime; hot-reloads the corrected files |
 | `/conjure list` | reads `SlotRegistry` | Shows configured item slots only |
 | `/conjure edit <i> <prompt>` | `GenerationService.regenerateItem` | Preserves slot index so existing item stacks stay valid |
 | `/conjure place <i>` | `StructurePlacer.place` | Places structure at player position; slot must be configured |

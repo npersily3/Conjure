@@ -167,6 +167,7 @@ public class ConjureBlock extends Block implements EntityBlock {
             } catch (ScriptException e) {
                 LOGGER.error("[Conjure] Script error for block slot {} (scriptId='{}'): {}",
                         slotIndex, scriptId, e.getMessage(), e);
+                dev.conjure.script.ScriptErrorLog.record(scriptId, e.getMessage());
                 player.displayClientMessage(
                         Component.literal("[Conjure] Script error: " + e.getMessage()),
                         false

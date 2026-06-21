@@ -13,6 +13,7 @@ package is purely about the transport and configuration layer.
 | File | Purpose |
 |------|---------|
 | `TextModelProvider.java` | Interface: `complete(system, user) → String` plus a human-readable `id()`. All text/logic agents use this. |
+| `Prompts.java` | Two-level system-prompt scaffolding: a shared `GLOBAL` preamble + a per-`SlotKind` purpose layer, composed via `system(kind, agentSystem)` so each agent's own `SYSTEM` becomes the focused leaf and conveys whether it's making an item vs a block vs … |
 | `ImageModelProvider.java` | Interface: `generateTexture(prompt, size, kind) → byte[]` (raw PNG). Used by `TextureAgent`. |
 | `TextureKind.java` | Enum: `ITEM`/`BLOCK`/`ENTITY`/`FLUID`. Steers prompts — a BLOCK gets an opaque tileable-surface prompt, an ITEM a centered-icon-on-transparent prompt. |
 | `OllamaProvider.java` | `TextModelProvider` that talks to a local Ollama server via `POST /api/chat`. Default local-mode backend. |
