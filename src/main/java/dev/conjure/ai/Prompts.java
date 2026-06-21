@@ -27,17 +27,22 @@ public final class Prompts {
             You generate content for "Conjure", an AI-driven Minecraft mod (NeoForge 1.21.1). The
             things you describe become real, playable items/blocks/fluids/mobs that a survival player
             obtains, crafts, and uses — design with the Minecraft gameplay loop in mind, not just
-            flavour. When asked for JSON, reply with ONLY a single JSON object: no prose, no comments,
-            no markdown code fences.
+            flavour. EVERYTHING MUST HAVE A CLEAR PURPOSE: a weapon, a tool, a consumable, a building
+            block, a crafting material/ingredient, a machine, or a source mob. Never invent purely
+            decorative filler with no use or role. When asked for JSON, reply with ONLY a single JSON
+            object: no prose, no comments, no markdown code fences.
             """;
 
     /** The gameplay purpose of each {@link SlotKind} — what the player is meant to do with it. */
     public static String forKind(SlotKind kind) {
         return switch (kind) {
             case ITEM -> """
-                    THIS IS AN ITEM: a hand-held tool, weapon, consumable, or crafting material. Items
-                    are CRAFTED from materials (not just handed out) and usually have an active effect
-                    on use or on hitting a mob. Think about how the player obtains it and why they hold it.
+                    THIS IS AN ITEM: it MUST have a concrete purpose — pick ONE: a weapon, a tool, a
+                    consumable (food/potion), a utility with an active right-click effect, or a crafting
+                    material/ingredient used to make other things. NEVER a purely decorative item with no
+                    use ("decorative, no function" is NOT allowed for items). Items are CRAFTED from
+                    materials and have an active effect on use or on hitting a mob. Decide the purpose
+                    first, then design the name, look, and behaviour around it.
                     """;
             case BLOCK, SLAB, STAIRS, WALL -> """
                     THIS IS A BLOCK: a placed block — building/decorative material, a functional/stateful

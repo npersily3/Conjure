@@ -7,8 +7,10 @@ import dev.conjure.ai.agents.TextureAgent;
 import dev.conjure.content.SlotDefinition;
 import dev.conjure.content.SlotKind;
 import dev.conjure.content.SlotRegistry;
+import dev.conjure.gen.DynamicPackManager;
 import dev.conjure.gen.assets.EntityAssets;
 import dev.conjure.registry.ConjureEntities;
+import dev.conjure.registry.ConjureItems;
 
 import java.util.function.Consumer;
 
@@ -41,6 +43,55 @@ public final class EntityPipeline implements GenerationPipeline {
             return;
         }
         runForSlot(slot, prompt, feedback);
+
+        // Every newly generated mob gets a spawn egg so the player can summon it in survival.
+        // (Only on fresh generation, not on /conjure regenerate, to avoid leaking item slots.)
+        SlotDefinition mob = SlotRegistry.get(SlotKind.ENTITY, slot);
+        if (mob.configured) {
+            generateSpawnEgg(slot, mob.displayName, prompt, feedback);
+        }
+    }
+
+    /**
+     * Mandatory companion item for a generated mob: a "spawn egg" whose right-click behavior summons
+     * the entity. A real {@code SpawnEggItem} can't be registered at runtime (registries freeze), so
+     * this fills a normal ITEM slot with a fixed summon script — the freeze-safe equivalent.
+     */
+    private static void generateSpawnEgg(int entitySlot, String mobName, String prompt,
+                                         Consumer<String> feedback) throws Exception {
+        int itemSlot = SlotRegistry.firstFree(SlotKind.ITEM, ConjureItems.ITEM_POOL);
+        if (itemSlot < 0) {
+            feedback.accept("§7[Conjure] No free item slot for a spawn egg.");
+            return;
+        }
+        feedback.accept("§7[Conjure] Generating spawn egg…");
+        int[][] argb = new TextureAgent().generate(
+                "spawn egg for " + mobName,
+                "a speckled two-tone Minecraft spawn egg, oval egg shape, plain background",
+                TextureKind.ITEM);
+        DynamicPackManager.writeItemTexture(itemSlot, argb);
+        DynamicPackManager.writeItemModel(itemSlot);
+
+        String entityId = "conjure:entity_slot_" + entitySlot;
+        String scriptId = "item_" + itemSlot;
+        // Fixed, reliable script: summon at the clicked block (or at the player when used in air).
+        PipelineSupport.writeScript(scriptId,
+                "var p = ctx.getPlayer();\n"
+                + "var pos = ctx.getTargetPos();\n"
+                + "if (pos) { ctx.summon(\"" + entityId + "\", pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5); }\n"
+                + "else { ctx.summon(\"" + entityId + "\", p.getX(), p.getY(), p.getZ()); }\n"
+                + "ctx.consumeHeld();\n"
+                + "ctx.message(\"Spawned " + mobName.replace("\"", "") + ".\");\n");
+
+        SlotDefinition def = new SlotDefinition(SlotKind.ITEM, itemSlot);
+        def.displayName      = mobName + " Spawn Egg";
+        def.sourcePrompt     = prompt;
+        def.texturePath      = "conjure:item/item_slot_" + itemSlot;
+        def.behaviorScriptId = scriptId;
+        def.strings.put("description", "Right-click to summon a " + mobName + ".");
+        PipelineSupport.commit(def);
+
+        feedback.accept("Spawn egg → /give @s conjure:item_slot_" + itemSlot);
     }
 
     /**
