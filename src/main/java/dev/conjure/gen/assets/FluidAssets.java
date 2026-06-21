@@ -9,8 +9,11 @@ import java.io.IOException;
  *
  * <p>Fluid sprites live in the <em>block</em> atlas (not the item atlas), so both the
  * still and flowing textures are placed under {@code assets/conjure/textures/block/}.
- * A single static frame is used for v1 — no animation mcmeta required for the sprite
- * to be stitched into the atlas.
+ *
+ * <p>Both the still and flowing PNGs are accompanied by an {@code .mcmeta} animation
+ * descriptor (e.g. {@code fluid_still_slot_N.png.mcmeta}) that instructs Minecraft's
+ * resource system to animate the texture. v1 keeps a single still frame; adding more
+ * rows to the PNG later will automatically expand the animation.
  *
  * <p>The texture paths used here mirror the fixed per-slot {@link net.minecraft.resources.ResourceLocation}s
  * baked into each {@link dev.conjure.content.fluid.ConjureFluidType}:
@@ -24,26 +27,45 @@ public final class FluidAssets {
     private FluidAssets() {}
 
     /**
-     * Writes the still-frame PNG for fluid slot {@code slot}.
+     * Animation .mcmeta content for a still fluid sprite.
+     * Vanilla water still uses frametime=2; we match that for a gentle shimmer.
+     * Format: {@code {"animation":{"frametime":N}}} — Minecraft infers frame count from the
+     * PNG height (each frame is PNG-width × PNG-width pixels tall).
+     */
+    private static final String STILL_MCMETA = "{\"animation\":{\"frametime\":2}}";
+
+    /**
+     * Animation .mcmeta content for a flowing fluid sprite.
+     * Vanilla water flow uses frametime=1 (faster scroll). We match that.
+     */
+    private static final String FLOW_MCMETA  = "{\"animation\":{\"frametime\":1}}";
+
+    /**
+     * Writes the still-frame PNG and its {@code .mcmeta} animation descriptor for fluid
+     * slot {@code slot}.
      *
      * @param slot  zero-based fluid slot index
-     * @param argb  16×16 ARGB pixel grid from {@link dev.conjure.ai.agents.TextureAgent}
+     * @param argb  ARGB pixel grid from {@link dev.conjure.ai.agents.TextureAgent}
      */
     public static void writeStillTexture(int slot, int[][] argb) throws IOException {
-        DynamicPackManager.writePngAt(
-                "assets/conjure/textures/block/fluid_still_slot_" + slot + ".png", argb);
+        String pngPath  = "assets/conjure/textures/block/fluid_still_slot_" + slot + ".png";
+        String metaPath = pngPath + ".mcmeta";
+        DynamicPackManager.writePngAt(pngPath, argb);
+        DynamicPackManager.write(metaPath, STILL_MCMETA);
     }
 
     /**
-     * Writes the flowing-frame PNG for fluid slot {@code slot}. Uses the same pixel data
-     * as the still texture (minor visual variant) for v1 simplicity.
+     * Writes the flowing-frame PNG and its {@code .mcmeta} animation descriptor for fluid
+     * slot {@code slot}. Uses the same pixel data as the still texture (v1 simplicity).
      *
      * @param slot  zero-based fluid slot index
-     * @param argb  16×16 ARGB pixel grid (typically a slightly modified still variant)
+     * @param argb  ARGB pixel grid (typically the same data as the still sprite)
      */
     public static void writeFlowTexture(int slot, int[][] argb) throws IOException {
-        DynamicPackManager.writePngAt(
-                "assets/conjure/textures/block/fluid_flow_slot_" + slot + ".png", argb);
+        String pngPath  = "assets/conjure/textures/block/fluid_flow_slot_" + slot + ".png";
+        String metaPath = pngPath + ".mcmeta";
+        DynamicPackManager.writePngAt(pngPath, argb);
+        DynamicPackManager.write(metaPath, FLOW_MCMETA);
     }
 
     // -------------------------------------------------------------------------
