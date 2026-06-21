@@ -27,10 +27,8 @@ public final class Prompts {
             You generate content for "Conjure", an AI-driven Minecraft mod (NeoForge 1.21.1). The
             things you describe become real, playable items/blocks/fluids/mobs that a survival player
             obtains, crafts, and uses — design with the Minecraft gameplay loop in mind, not just
-            flavour. EVERYTHING MUST HAVE A CLEAR PURPOSE: a weapon, a tool, a consumable, a building
-            block, a crafting material/ingredient, a machine, or a source mob. Never invent purely
-            decorative filler with no use or role. When asked for JSON, reply with ONLY a single JSON
-            object: no prose, no comments, no markdown code fences.
+            flavour. When asked for JSON, reply with ONLY a single JSON object: no prose, no comments,
+            no markdown code fences.
             """;
 
     /** The gameplay purpose of each {@link SlotKind} — what the player is meant to do with it. */
@@ -46,8 +44,10 @@ public final class Prompts {
                     """;
             case BLOCK, SLAB, STAIRS, WALL -> """
                     THIS IS A BLOCK: a placed block — building/decorative material, a functional/stateful
-                    block, or a machine. It must be obtainable in survival (crafted, smelted, or mined),
-                    and may be a natural resource that generates in the world.
+                    block, or a machine. A purely DECORATIVE / aesthetic building block is a perfectly
+                    valid result (blocks inherently serve a building purpose). It must be obtainable in
+                    survival (crafted, smelted, or mined), and may be a natural resource that generates
+                    in the world.
                     For its visualIntent, describe the BLOCK'S SURFACE as a flat, seamless, tileable
                     texture — its material, colours, and small repeating pattern (e.g. "mottled mossy
                     green stone flecked with glowing teal veins"). Describe what the surface LOOKS like,
