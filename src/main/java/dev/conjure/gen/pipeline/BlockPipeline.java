@@ -80,13 +80,6 @@ public final class BlockPipeline implements GenerationPipeline {
         return -1;
     }
 
-    /** Lock-like stateful blocks (safe/vault/…) get a gating script + keyId; others toggle freely. */
-    private static boolean isLockLike(String prompt) {
-        String p = prompt.toLowerCase(java.util.Locale.ROOT);
-        return p.contains("safe") || p.contains("vault") || p.contains("lockbox")
-                || p.contains("locker") || p.contains("lock");
-    }
-
     @Override
     public void run(String prompt, Consumer<String> feedback) throws Exception {
 
@@ -157,7 +150,10 @@ public final class BlockPipeline implements GenerationPipeline {
         // Write assets (stateful blocks get a second "on/open" texture + a variant blockstate)
         if (machineResult.kind() == MachineAgent.Kind.STATEFUL) {
             feedback.accept("§7[Conjure] Generating activated texture…");
-            int[][] onArgb = new TextureAgent().generate(prompt + " activated, open, glowing, lit up", TextureKind.BLOCK);
+            String activePrompt = data.activeVisual().isBlank()
+                    ? prompt + " activated"
+                    : data.activeVisual();
+            int[][] onArgb = new TextureAgent().generate(activePrompt, TextureKind.BLOCK);
             DynamicPackManager.writeActivatableAssets(slot, argb, onArgb);
         } else {
             DynamicPackManager.writeBlockTexture(slot, argb);
@@ -184,18 +180,11 @@ public final class BlockPipeline implements GenerationPipeline {
             }
             case STATEFUL -> {
                 def.strings.put("interaction", "stateful");
-                if (isLockLike(prompt)) {
-                    // A lock needs a gating script so it does NOT toggle on a bare right-click; only a
-                    // key item whose keyId matches opens it (via the key's useOn → ctx.setBlockActive).
-                    feedback.accept("§7[Conjure] Generating lock behavior…");
-                    String scriptId = "block_slot_" + slot;
-                    PipelineSupport.writeScript(scriptId, new LogicAgent().generateStateful(prompt, true));
-                    def.behaviorScriptId = scriptId;
-                    def.strings.put("keyId", "conjure_key_" + slot);
-                } else {
-                    // A door/lamp/switch toggles freely: no script, the block flips its own state.
-                    def.behaviorScriptId = "";
-                }
+                feedback.accept("§7[Conjure] Generating stateful behavior…");
+                String scriptId = "block_slot_" + slot;
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt));
+                def.behaviorScriptId = scriptId;
+                def.strings.put("keyId", "conjure_key_" + slot);
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");
@@ -273,7 +262,10 @@ public final class BlockPipeline implements GenerationPipeline {
 
         if (activatableSlot) {
             feedback.accept("§7[Conjure] Generating activated texture…");
-            int[][] onArgb = new TextureAgent().generate(prompt + " activated, open, glowing, lit up", TextureKind.BLOCK);
+            String activePrompt = data.activeVisual().isBlank()
+                    ? prompt + " activated"
+                    : data.activeVisual();
+            int[][] onArgb = new TextureAgent().generate(activePrompt, TextureKind.BLOCK);
             DynamicPackManager.writeActivatableAssets(slot, argb, onArgb);
         } else {
             DynamicPackManager.writeBlockTexture(slot, argb);
@@ -298,15 +290,11 @@ public final class BlockPipeline implements GenerationPipeline {
             }
             case STATEFUL -> {
                 def.strings.put("interaction", "stateful");
-                if (isLockLike(prompt)) {
-                    feedback.accept("§7[Conjure] Generating lock behavior…");
-                    String scriptId = "block_slot_" + slot;
-                    PipelineSupport.writeScript(scriptId, new LogicAgent().generateStateful(prompt, true));
-                    def.behaviorScriptId = scriptId;
-                    def.strings.put("keyId", "conjure_key_" + slot);
-                } else {
-                    def.behaviorScriptId = "";
-                }
+                feedback.accept("§7[Conjure] Generating stateful behavior…");
+                String scriptId = "block_slot_" + slot;
+                PipelineSupport.writeScript(scriptId, new LogicAgent().generate(prompt));
+                def.behaviorScriptId = scriptId;
+                def.strings.put("keyId", "conjure_key_" + slot);
             }
             case SCRIPT -> {
                 feedback.accept("§7[Conjure] Generating behavior script…");
