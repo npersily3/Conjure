@@ -36,7 +36,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class ComfyUIProvider implements ImageModelProvider {
 
     /**
-     * Pixel-art / game-icon suffix appended to an ITEM/ENTITY/FLUID prompt to nudge diffusion
+     * Pixel-art / game-icon suffix appended to an ITEM/ENTITY prompt to nudge diffusion
      * toward a crisp, low-resolution Minecraft sprite (centered subject on a transparent BG).
      */
     private static final String ITEM_SUFFIX =
@@ -53,6 +53,16 @@ public final class ComfyUIProvider implements ImageModelProvider {
             + "entire frame edge to edge, no background, no object, no perspective, pixel art, "
             + "16-bit, Minecraft block texture";
 
+    /**
+     * Fluid suffix: a tileable, seamless top-down liquid surface that fills the entire frame.
+     * No transparency, no centered icon — every pixel is liquid. Animation is handled separately
+     * via .mcmeta; the diffusion output is a single still frame.
+     */
+    private static final String FLUID_SUFFIX =
+            ", seamless tileable top-down liquid surface texture, fills the entire frame edge to "
+            + "edge, subtle ripple or wave pattern, fully opaque, no transparency, no centered "
+            + "object, pixel art, 16-bit, Minecraft fluid texture";
+
     private static final String NEGATIVE_BASE =
             "blurry, anti-aliasing, smooth gradients, photorealistic, photo, 3d render, "
             + "watermark, signature, text, low quality, deformed";
@@ -61,6 +71,15 @@ public final class ComfyUIProvider implements ImageModelProvider {
     private static final String BLOCK_NEGATIVE_EXTRA =
             ", centered object, single object, background, drop shadow, border, frame, vignette, "
             + "perspective";
+
+    /**
+     * Extra negatives for fluids: prevent centered icons, transparency, and borders that would
+     * break tileability. "transparent background" is explicitly excluded so diffusion fills the
+     * entire frame with liquid colour.
+     */
+    private static final String FLUID_NEGATIVE_EXTRA =
+            ", centered object, single object, transparent background, border, frame, vignette, "
+            + "icon, item, silhouette";
 
     /** How long to keep polling {@code /history} before giving up. */
     private static final Duration POLL_TIMEOUT = Duration.ofMinutes(10);
@@ -105,12 +124,20 @@ public final class ComfyUIProvider implements ImageModelProvider {
 
     /** Positive-prompt suffix for the texture kind. */
     private static String suffixFor(TextureKind kind) {
-        return kind == TextureKind.BLOCK ? BLOCK_SUFFIX : ITEM_SUFFIX;
+        return switch (kind) {
+            case BLOCK -> BLOCK_SUFFIX;
+            case FLUID -> FLUID_SUFFIX;
+            default    -> ITEM_SUFFIX;
+        };
     }
 
     /** Negative prompt for the texture kind. */
     private static String negativeFor(TextureKind kind) {
-        return kind == TextureKind.BLOCK ? NEGATIVE_BASE + BLOCK_NEGATIVE_EXTRA : NEGATIVE_BASE;
+        return switch (kind) {
+            case BLOCK -> NEGATIVE_BASE + BLOCK_NEGATIVE_EXTRA;
+            case FLUID -> NEGATIVE_BASE + FLUID_NEGATIVE_EXTRA;
+            default    -> NEGATIVE_BASE;
+        };
     }
 
     // -------------------------------------------------------------------------

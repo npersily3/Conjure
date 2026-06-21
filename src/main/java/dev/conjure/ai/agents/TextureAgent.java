@@ -50,8 +50,24 @@ public final class TextureAgent {
             + "opaque (no \"#00000000\").\n"
             + SCHEMA;
 
+    /**
+     * Fluids are a tileable, seamless liquid surface that fills the entire frame edge-to-edge.
+     * No transparency, no centered icon, no background — every pixel is part of the fluid.
+     */
+    private static final String FLUID_SYSTEM =
+            "You design Minecraft fluid surface textures as 16x16 pixel art: a tileable, seamless, "
+            + "top-down liquid surface that fills the WHOLE 16x16 grid edge to edge with no gaps. "
+            + "Use subtle ripple or wave patterns. Do NOT draw a centered icon, do NOT leave any "
+            + "transparent pixels, do NOT draw a border or background — every pixel is part of the "
+            + "liquid surface and must be fully opaque (no \"#00000000\").\n"
+            + SCHEMA;
+
     private static String systemFor(TextureKind kind) {
-        return kind == TextureKind.BLOCK ? BLOCK_SYSTEM : ITEM_SYSTEM;
+        return switch (kind) {
+            case BLOCK -> BLOCK_SYSTEM;
+            case FLUID -> FLUID_SYSTEM;
+            default    -> ITEM_SYSTEM;
+        };
     }
 
     /**
@@ -62,10 +78,29 @@ public final class TextureAgent {
      * total failure returns a transparent grid rather than breaking generation.
      *
      * @param prompt the item description (e.g. "a glowing emerald sword")
+     * @param kind   texture kind — controls prompt augmentation and post-processing
      * @return ARGB pixel grid, indexed [y][x]; size varies by quality tier (image path) or is
      *         always 16×16 (fallback path)
      */
     public int[][] generate(String prompt, TextureKind kind) throws Exception {
+        return generate(prompt, null, kind);
+    }
+
+    /**
+     * Enrichment overload — accepts an optional {@code visualIntent} string (e.g. a short
+     * flavour description from {@link DataAgent}) that is appended to the prompt before it is
+     * sent to the image backend or LLM fallback. This lets the DataAgent's richer noun phrases
+     * steer the visual without changing the user's original prompt.
+     *
+     * @param prompt       the item/block/fluid description (user-supplied)
+     * @param visualIntent optional extra visual context; may be {@code null} or empty
+     * @param kind         texture kind — controls prompt augmentation and post-processing
+     */
+    public int[][] generate(String prompt, String visualIntent, TextureKind kind) throws Exception {
+        String enrichedPrompt = (visualIntent != null && !visualIntent.isBlank())
+                ? prompt + ". " + visualIntent
+                : prompt;
+
         // Determine target size from config
         ImageQuality quality = Config.IMAGE_QUALITY.get();
         int targetSize = (quality == ImageQuality.HIGH)
@@ -76,17 +111,17 @@ public final class TextureAgent {
         try {
             ImageModelProvider imageProvider = ProviderFactory.image();
             if (imageProvider != null) {
-                byte[] pngBytes = imageProvider.generateTexture(prompt, targetSize, kind);
-                return PixelTexture.fromPng(pngBytes, targetSize);
+                byte[] pngBytes = imageProvider.generateTexture(enrichedPrompt, targetSize, kind);
+                return PixelTexture.fromPng(pngBytes, targetSize, kind);
             }
         } catch (Exception e) {
             Conjure.LOGGER.warn(
                     "[TextureAgent] Image provider failed for '{}', falling back to LLM pixel-art: {}",
-                    prompt, e.getMessage());
+                    enrichedPrompt, e.getMessage());
         }
 
         // Fallback path: ask the text model to emit a pixel-art JSON grid
-        return llmFallback(prompt, kind);
+        return llmFallback(enrichedPrompt, kind);
     }
 
     // -------------------------------------------------------------------------
@@ -100,9 +135,11 @@ public final class TextureAgent {
     private static int[][] llmFallback(String prompt, TextureKind kind) throws Exception {
         TextModelProvider provider = ProviderFactory.text();
         String system = systemFor(kind);
-        String user = (kind == TextureKind.BLOCK)
-                ? "Design a tileable 16x16 Minecraft block surface texture for: " + prompt
-                : "Design a pixel-art Minecraft item icon for: " + prompt;
+        String user = switch (kind) {
+            case BLOCK -> "Design a tileable 16x16 Minecraft block surface texture for: " + prompt;
+            case FLUID -> "Design a tileable 16x16 Minecraft fluid surface texture for: " + prompt;
+            default    -> "Design a pixel-art Minecraft item icon for: " + prompt;
+        };
         String raw = provider.complete(system, user);
         JsonObject obj = JsonHelper.extractAndParse(raw, system, provider, user);
         return decode(obj);
