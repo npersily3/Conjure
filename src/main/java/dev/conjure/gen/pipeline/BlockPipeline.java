@@ -84,15 +84,18 @@ public final class BlockPipeline implements GenerationPipeline {
     @Override
     public void run(String prompt, Consumer<String> feedback) throws Exception {
 
-        // --- Texture + name (always generated first; same for all archetypes) ---
-        feedback.accept("§7[Conjure] Generating texture…");
-        int[][] argb = new TextureAgent().generate(prompt, TextureKind.BLOCK);
-
+        // --- Name first, so its visual intent (a SURFACE description) drives the texture ---
         feedback.accept("§7[Conjure] Generating name…");
         DataAgent.Result data = new DataAgent().generate(prompt, SlotKind.BLOCK);
 
+        feedback.accept("§7[Conjure] Generating texture…");
+        int[][] argb = new TextureAgent().generate(prompt, data.visualIntent(), TextureKind.BLOCK);
+
         // --- Building material → expand into a family with survival recipes ---
-        if (data.isMaterial() && Config.RECIPES_ENABLED.get()) {
+        // (skip inside a mod economy: those pieces are single blocks with chain recipes, and the
+        //  family's slab/stairs/wall + stonecutting would flood a non-mining mod.)
+        if (data.isMaterial() && Config.RECIPES_ENABLED.get()
+                && dev.conjure.gen.GenerationContext.current() == null) {
             generateFamily(prompt, data, argb, feedback);
             return;
         }
@@ -237,11 +240,11 @@ public final class BlockPipeline implements GenerationPipeline {
      */
     @Override
     public void runForSlot(int slot, String prompt, Consumer<String> feedback) throws Exception {
-        feedback.accept("§7[Conjure] Generating texture…");
-        int[][] argb = new TextureAgent().generate(prompt, TextureKind.BLOCK);
-
         feedback.accept("§7[Conjure] Generating name…");
         DataAgent.Result data = new DataAgent().generate(prompt, SlotKind.BLOCK);
+
+        feedback.accept("§7[Conjure] Generating texture…");
+        int[][] argb = new TextureAgent().generate(prompt, data.visualIntent(), TextureKind.BLOCK);
 
         boolean machineSlot = slot >= MACHINE_OFFSET
                 && slot < MACHINE_OFFSET + BlockArchetype.MACHINE.count;

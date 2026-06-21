@@ -43,7 +43,8 @@ public final class WorldgenPipeline implements GenerationPipeline {
         WorldgenAgent.Result wg = new WorldgenAgent().generate(prompt, blockId);
 
         String name = "worldgen_block_" + slot;
-        writeWorldgenJson(name, blockId, wg);
+        dev.conjure.gen.WorldgenWriter.writeOre(name, blockId, wg.veinSize(), wg.veinsPerChunk(),
+                wg.minY(), wg.maxY(), wg.biomeTag());
 
         SlotDefinition def = new SlotDefinition(SlotKind.BLOCK, slot);
         def.displayName  = data.displayName();
@@ -66,24 +67,4 @@ public final class WorldgenPipeline implements GenerationPipeline {
         feedback.accept("§e[Conjure] §fRejoin the world to see it spawn in new chunks.");
     }
 
-    /** Writes the configured-feature, placed-feature, and biome-modifier JSON for one ore. */
-    private static void writeWorldgenJson(String name, String blockId, WorldgenAgent.Result wg) throws Exception {
-        DynamicPackManager.write("data/conjure/worldgen/configured_feature/" + name + ".json",
-                "{\"type\":\"minecraft:ore\",\"config\":{\"size\":" + wg.veinSize()
-                + ",\"discard_chance_on_air_exposure\":0.0,\"targets\":[{"
-                + "\"state\":{\"Name\":\"" + blockId + "\"},"
-                + "\"target\":{\"predicate_type\":\"minecraft:tag_match\",\"tag\":\"minecraft:stone_ore_replaceables\"}}]}}");
-
-        DynamicPackManager.write("data/conjure/worldgen/placed_feature/" + name + ".json",
-                "{\"feature\":\"conjure:" + name + "\",\"placement\":["
-                + "{\"type\":\"minecraft:count\",\"count\":" + wg.veinsPerChunk() + "},"
-                + "{\"type\":\"minecraft:in_square\"},"
-                + "{\"type\":\"minecraft:height_range\",\"height\":{\"type\":\"minecraft:uniform\","
-                + "\"min_inclusive\":{\"absolute\":" + wg.minY() + "},\"max_inclusive\":{\"absolute\":" + wg.maxY() + "}}},"
-                + "{\"type\":\"minecraft:biome\"}]}");
-
-        DynamicPackManager.write("data/conjure/neoforge/biome_modifier/" + name + ".json",
-                "{\"type\":\"neoforge:add_features\",\"biomes\":\"" + wg.biomeTag() + "\","
-                + "\"features\":\"conjure:" + name + "\",\"step\":\"underground_ores\"}");
-    }
 }

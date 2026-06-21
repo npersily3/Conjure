@@ -18,8 +18,9 @@ public final class ProviderFactory {
      * <p>When {@link Config#IMAGE_MODE} is {@link ProviderMode#LOCAL} this builds a
      * {@link ComfyUIProvider} wired from the image config block:
      * <ul>
-     *   <li>{@link ImageQuality#FAST} — {@code IMAGE_FAST_MODEL}, ~8 steps, 512px native</li>
-     *   <li>{@link ImageQuality#HIGH} — {@code IMAGE_HIGH_MODEL}, ~25 steps, 768px native</li>
+     *   <li>{@link ImageQuality#FAST} — {@code IMAGE_FAST_MODEL} (SD1.5 pixel checkpoint), ~8 steps, 512px</li>
+     *   <li>{@link ImageQuality#HIGH} — {@code IMAGE_HIGH_MODEL} (SDXL base) + {@code IMAGE_HIGH_LORA}
+     *       (Pixel Art XL), ~25 steps, 1024px native</li>
      * </ul>
      * The native size is the diffusion resolution; {@code TextureAgent} downscales it to the small
      * texture target. When mode is ANTHROPIC (Anthropic models do not emit images) {@code null} is
@@ -32,9 +33,11 @@ public final class ProviderFactory {
         String endpoint = Config.LOCAL_IMAGE_ENDPOINT.get();
         ImageQuality quality = Config.IMAGE_QUALITY.get();
         if (quality == ImageQuality.HIGH) {
-            return new ComfyUIProvider(endpoint, Config.IMAGE_HIGH_MODEL.get(), 25, 768);
+            // SDXL base + Pixel Art XL LoRA at 1024 native.
+            return new ComfyUIProvider(endpoint, Config.IMAGE_HIGH_MODEL.get(), 25, 1024,
+                    Config.IMAGE_HIGH_LORA.get());
         }
-        // FAST (default)
+        // FAST (default): SD1.5 pixel-art checkpoint, no LoRA.
         return new ComfyUIProvider(endpoint, Config.IMAGE_FAST_MODEL.get(), 8, 512);
     }
 

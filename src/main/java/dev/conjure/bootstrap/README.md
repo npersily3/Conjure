@@ -14,7 +14,7 @@ manual macOS/Linux steps, and the distribution caveats.
 |------|---------|
 | `BackendBootstrap.java` | Public entry point (`start()`). Checks the config kill-switch, guards to Windows, spawns the daemon thread, and runs the Ollama then ComfyUI bootstrappers, isolating failures. |
 | `OllamaBootstrap.java` | Ensures Ollama is running and the configured text model (`gemma4:latest` by default) is pulled: detect endpoint → find/install standalone Ollama → `ollama serve` → `POST /api/pull`. |
-| `ComfyUiBootstrap.java` | Downloads the ComfyUI Windows portable build, extracts it, and fetches a default SD checkpoint into `models/checkpoints`. Does not auto-start the server. |
+| `ComfyUiBootstrap.java` | Downloads the ComfyUI Windows portable build, extracts it, and fetches the pixel-art models into `models/{checkpoints,loras}`: the FAST SD1.5 pixel checkpoint, plus the HIGH SDXL base + Pixel Art XL LoRA (≈11 GB total, idempotent). Does not auto-start the server. |
 | `BootstrapUtil.java` | Shared helpers: HTTP download with progress logging, `.zip` extraction (JDK) and `.7z` extraction (Windows `tar`), process launch/detach, PATH lookup, reachability polling. |
 
 Downloads land under `<gamedir>/conjure/runtime/` (`ollama/` and `ComfyUI/`).

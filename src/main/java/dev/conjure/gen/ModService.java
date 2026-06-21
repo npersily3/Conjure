@@ -54,20 +54,23 @@ public final class ModService {
                     List<String> ingredientIds = new ArrayList<>();
                     for (String ref : p.from()) {
                         String id = made.get(ref);
-                        if (id != null) ingredientIds.add(id);
+                        // Entities can't be a crafting ingredient — a mob "drops" its material
+                        // (loot, future work); skip it so we don't emit a broken recipe.
+                        if (id != null && !id.contains(":entity_")) ingredientIds.add(id);
                     }
-                    boolean worldgenResource = p.role() == ModPlannerAgent.Role.RESOURCE
-                            && (p.kind() == null || p.kind() == SlotKind.BLOCK);
-                    boolean smelt = p.role() == ModPlannerAgent.Role.MATERIAL && ingredientIds.size() == 1;
-
+                    // Resource pieces generate as NORMAL content (proper texture); their world-spawning
+                    // JSON is written afterward per resourceType — no forced ore/smelt.
                     String created = GenerationService.generateForMod(
-                            p.prompt(), p.kind(), worldgenResource, ingredientIds, smelt, feedback);
+                            p.prompt(), p.kind(), ingredientIds, p.refine(), feedback);
                     if (created != null && p.name() != null && !p.name().isBlank()) {
                         made.put(p.name(), created);
                     }
+                    if (p.role() == ModPlannerAgent.Role.RESOURCE && created != null) {
+                        writeResourceWorldgen(p, created, feedback);
+                    }
                 }
                 feedback.accept("§a[Conjure] §fMod complete (" + made.size()
-                        + " linked pieces). §7Ore resources spawn in new chunks after a world rejoin.");
+                        + " linked pieces). §7Plant/ore resources appear in new chunks after a world rejoin.");
             } catch (Exception e) {
                 Conjure.LOGGER.error("Conjure mod planning failed for: {}", modDescription, e);
                 feedback.accept("Mod planning failed: " + PipelineSupport.describe(e));
@@ -117,6 +120,30 @@ public final class ModService {
         }, "conjure-mod-planner");
         planner.setDaemon(true);
         planner.start();
+    }
+
+    /**
+     * Makes a generated resource actually appear in the world, per its {@code resourceType}: plants
+     * scatter on the surface, trees grow, ores form veins underground, mobs get spawn weights. Blocks
+     * with no/unknown type default to a surface plant (never a forced ore). Best-effort.
+     */
+    private static void writeResourceWorldgen(ModPlannerAgent.Piece p, String createdId,
+                                              Consumer<String> feedback) {
+        String name = "wg_" + createdId.substring(createdId.indexOf(':') + 1);
+        String biome = "#minecraft:is_overworld";
+        String type = p.resourceType() == null ? "" : p.resourceType();
+        try {
+            switch (type) {
+                case "ore"  -> WorldgenWriter.writeOre(name, createdId, 6, 6, -32, 48, biome);
+                case "tree" -> WorldgenWriter.writeTree(name, createdId, 5, biome);
+                case "mob"  -> WorldgenWriter.writeMobSpawn(name, createdId, 12, 2, 4, biome);
+                default     -> WorldgenWriter.writePlant(name, createdId, 48, 4, biome);
+            }
+            feedback.accept("§7[Conjure] Resource will spawn in the world ("
+                    + (type.isBlank() ? "plant" : type) + ") — rejoin to see it.");
+        } catch (Exception e) {
+            Conjure.LOGGER.warn("[Conjure] resource worldgen skipped for {}: {}", createdId, e.getMessage());
+        }
     }
 
     private ModService() {}

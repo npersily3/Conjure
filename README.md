@@ -40,22 +40,22 @@ generation pipeline. You can even ask for a whole mod at once.
   back** to having the text model emit pixel-art — so everything still works, the icons are just
   simpler.
 
-#### Texture quality — use a pixel-art checkpoint
-Base **SD 1.5** (`v1-5-pruned-emaonly`) does not understand "flat, tileable, top-down" and renders
-detailed 3-D *scenes*, so blocks come out looking like little dioramas. The image pipeline already
-mitigates this (blocks are rendered at low native resolution, hard-downscaled to 16×16, made
-seamlessly tileable, and palette-quantized; fluids use a dedicated tileable-liquid prompt), but the
-**single biggest quality win is the checkpoint**:
+#### Texture quality — pixel-art models (auto-installed)
+Base SD 1.5 renders detailed 3-D *scenes*, not flat tiles, so out of the box blocks look like
+dioramas. Conjure now ships **two pixel-art models** that the first-launch bootstrap downloads
+automatically into ComfyUI (≈11 GB total) — **no manual ComfyUI setup**:
 
-1. Download a **pixel-art** SD1.5 checkpoint (e.g. *All-In-One-Pixel-Model*, or any "pixel art"
-   checkpoint/merge from Civitai) into `ComfyUI/models/checkpoints/`.
-2. Set `[image] fastModel` (and `highModel`) in the config to that filename. The workflow loads it
-   via `CheckpointLoaderSimple`, so no other change is needed.
-3. Restart generation (`/conjure new …`). Item icons get clean transparent backgrounds (alpha is
-   masked automatically); blocks/fluids become flat, readable, tileable surfaces.
+- **FAST** (`[image] quality = FAST`, default): `PixelartSpritesheet_V.1.ckpt` — a light SD1.5
+  pixel-art checkpoint, 512px, quick, easy on VRAM.
+- **HIGH** (`quality = HIGH`): `sd_xl_base_1.0.safetensors` + the `pixel-art-xl.safetensors` LoRA —
+  SDXL at 1024px, the best an ~8 GB GPU can run (slower). The workflow adds a `LoraLoader` node on
+  this path automatically.
 
-> If you switch to an **SDXL**-based pixel-art model, raise `BLOCK_NATIVE_SIZE` in
-> `ai/ComfyUIProvider.java` from 64 to ≥256 (SDXL's VAE minimum); the 16×16 downscale still applies.
+The pipeline also hard-downscales blocks to 16×16, makes them seamlessly tileable, palette-quantizes,
+and masks item backgrounds to transparent. To use your own model, drop the file into
+`ComfyUI/models/{checkpoints,loras}` and point `[image] fastModel`/`highModel`/`highLora` at it.
+ComfyUI must be running (`run_nvidia_gpu.bat`); the `features.autoInstallBackends = false` switch
+disables the auto-download.
 - **GeckoLib** (entity models) is a required mod dependency; in the dev workspace it's pulled in
   automatically by Gradle.
 

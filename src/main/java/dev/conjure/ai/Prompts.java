@@ -43,6 +43,10 @@ public final class Prompts {
                     THIS IS A BLOCK: a placed block — building/decorative material, a functional/stateful
                     block, or a machine. It must be obtainable in survival (crafted, smelted, or mined),
                     and may be a natural resource that generates in the world.
+                    For its visualIntent, describe the BLOCK'S SURFACE as a flat, seamless, tileable
+                    texture — its material, colours, and small repeating pattern (e.g. "mottled mossy
+                    green stone flecked with glowing teal veins"). Describe what the surface LOOKS like,
+                    never what the block does.
                     """;
             case FLUID -> """
                     THIS IS A FLUID: a liquid that fills space, flows, and is picked up with a bucket.

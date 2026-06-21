@@ -10,7 +10,6 @@ import dev.conjure.gen.pipeline.GenerationPipeline;
 import dev.conjure.gen.pipeline.ItemPipeline;
 import dev.conjure.gen.pipeline.PipelineSupport;
 import dev.conjure.gen.pipeline.StructurePipeline;
-import dev.conjure.gen.pipeline.WorldgenPipeline;
 import dev.conjure.content.block.BlockArchetype;
 import dev.conjure.registry.ConjureEntities;
 import dev.conjure.registry.ConjureFluids;
@@ -44,9 +43,6 @@ public final class GenerationService {
 
     /** The item pipeline is also reused directly by {@link #regenerateItem}. */
     private static final ItemPipeline ITEM_PIPELINE = new ItemPipeline();
-
-    /** Used for mod-economy "resource" pieces (an ore that also spawns in the world). */
-    private static final WorldgenPipeline WORLDGEN_PIPELINE = new WorldgenPipeline();
 
     /**
      * Kind → pipeline. All five kinds (ITEM, BLOCK, FLUID, ENTITY, STRUCTURE) are mapped; the
@@ -99,12 +95,13 @@ public final class GenerationService {
      * Generates one piece of a whole-mod economy <em>synchronously</em> (blocks until done) with a
      * {@link GenerationContext} carrying the resolved ingredient ids, and returns the
      * {@code conjure:...} id the pipeline created so the next piece can be crafted from it. Runs on
-     * the same single generation thread, so it stays serial with everything else.
+     * the same single generation thread, so it stays serial with everything else. Resources go
+     * through their NORMAL pipeline (for a proper texture); world-spawning JSON is written separately
+     * by {@link ModService} via {@link WorldgenWriter}.
      *
-     * @param worldgenResource true for a "resource" piece — generate an ore that also spawns in world
      * @return the created content id, or {@code null} if the piece failed
      */
-    public static String generateForMod(String prompt, SlotKind kindHint, boolean worldgenResource,
+    public static String generateForMod(String prompt, SlotKind kindHint,
                                         java.util.List<String> ingredientIds, boolean smelt,
                                         Consumer<String> feedback) {
         try {
@@ -113,8 +110,7 @@ public final class GenerationService {
                 GenerationContext.set(new GenerationContext(ingredientIds, smelt));
                 try {
                     SlotKind kind = kindHint != null ? kindHint : new RouterAgent().classify(prompt);
-                    GenerationPipeline pipeline = worldgenResource
-                            ? WORLDGEN_PIPELINE : PIPELINES.getOrDefault(kind, ITEM_PIPELINE);
+                    GenerationPipeline pipeline = PIPELINES.getOrDefault(kind, ITEM_PIPELINE);
                     pipeline.run(prompt, feedback);
                     GenerationContext gc = GenerationContext.current();
                     return gc == null ? null : gc.createdId();

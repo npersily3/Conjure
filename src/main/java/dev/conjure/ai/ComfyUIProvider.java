@@ -92,6 +92,8 @@ public final class ComfyUIProvider implements ImageModelProvider {
     private final String checkpoint;
     private final int steps;
     private final int nativeSize;
+    /** Optional LoRA filename (HIGH/SDXL pixel-art path); null/blank = no LoRA (SD1.5 FAST). */
+    private final String lora;
     private final String clientId = UUID.randomUUID().toString();
     private final HttpClient http;
 
@@ -106,10 +108,16 @@ public final class ComfyUIProvider implements ImageModelProvider {
      *                   the final texture is downscaled from this by the caller
      */
     public ComfyUIProvider(String endpoint, String checkpoint, int steps, int nativeSize) {
+        this(endpoint, checkpoint, steps, nativeSize, null);
+    }
+
+    /** As above, plus an optional {@code lora} filename applied via a {@code LoraLoader} node. */
+    public ComfyUIProvider(String endpoint, String checkpoint, int steps, int nativeSize, String lora) {
         this.endpoint = endpoint.replaceAll("/+$", "");
         this.checkpoint = checkpoint;
         this.steps = steps;
         this.nativeSize = nativeSize;
+        this.lora = (lora == null || lora.isBlank()) ? null : lora;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();
@@ -133,7 +141,9 @@ public final class ComfyUIProvider implements ImageModelProvider {
      * All other kinds use the configured {@code nativeSize} (512/768).
      */
     private int nativeSizeFor(TextureKind kind) {
-        return (kind == TextureKind.BLOCK) ? BLOCK_NATIVE_SIZE : nativeSize;
+        // The 64px BLOCK trick only makes sense for SD1.5 (small native). SDXL (lora path) needs its
+        // full native resolution or it produces garbage; the pixel-art LoRA already forces flatness.
+        return (kind == TextureKind.BLOCK && lora == null) ? BLOCK_NATIVE_SIZE : nativeSize;
     }
 
     /** Positive-prompt suffix for the texture kind. */
@@ -210,16 +220,32 @@ public final class ComfyUIProvider implements ImageModelProvider {
         graph.add("4", node("CheckpointLoaderSimple",
                 obj("ckpt_name", checkpoint)));
 
+        // 10 (optional): apply a LoRA (e.g. Pixel Art XL on the SDXL/HIGH path). Outputs 0=MODEL, 1=CLIP.
+        // When present, MODEL/CLIP downstream source from the LoRA instead of the checkpoint directly.
+        boolean useLora = lora != null;
+        String modelSrc = useLora ? "10" : "4";
+        String clipSrc  = useLora ? "10" : "4";
+        if (useLora) {
+            graph.add("10", node("LoraLoader",
+                    inputs(o -> {
+                        o.addProperty("lora_name", lora);
+                        o.addProperty("strength_model", 1.0);
+                        o.addProperty("strength_clip", 1.0);
+                        o.add("model", link("4", 0));
+                        o.add("clip", link("4", 1));
+                    })));
+        }
+
         // 6 / 7: positive + negative conditioning
         graph.add("6", node("CLIPTextEncode",
                 inputs(o -> {
                     o.addProperty("text", prompt + suffixFor(kind));
-                    o.add("clip", link("4", 1));
+                    o.add("clip", link(clipSrc, 1));
                 })));
         graph.add("7", node("CLIPTextEncode",
                 inputs(o -> {
                     o.addProperty("text", negativeFor(kind));
-                    o.add("clip", link("4", 1));
+                    o.add("clip", link(clipSrc, 1));
                 })));
 
         // 5: empty latent — use kind-specific native size (BLOCK: 64 px; others: 512/768)
@@ -239,7 +265,7 @@ public final class ComfyUIProvider implements ImageModelProvider {
                     o.addProperty("sampler_name", "euler");
                     o.addProperty("scheduler", "normal");
                     o.addProperty("denoise", 1.0);
-                    o.add("model", link("4", 0));
+                    o.add("model", link(modelSrc, 0));
                     o.add("positive", link("6", 0));
                     o.add("negative", link("7", 0));
                     o.add("latent_image", link("5", 0));

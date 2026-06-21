@@ -155,13 +155,16 @@ public final class ModPlannerAgent {
     /**
      * One planned piece in a mod economy.
      *
-     * @param name   unique logical id other pieces reference in {@code from} (may be null in fallback)
-     * @param prompt the concrete single-piece generation prompt
-     * @param kind   suggested content kind, or null to let the router decide
-     * @param role   where it sits in the loop (resource → material → product)
-     * @param from   logical names of earlier pieces this one is crafted/smelted from
+     * @param name         unique logical id other pieces reference in {@code from} (may be null in fallback)
+     * @param prompt       the concrete single-piece generation prompt
+     * @param kind         suggested content kind, or null to let the router decide
+     * @param role         where it sits in the loop (resource → material → product)
+     * @param resourceType for RESOURCE pieces: "plant"|"tree"|"mob"|"ore" (else "")
+     * @param refine       for MATERIAL pieces: true if made in a furnace (smelt), false to craft/harvest
+     * @param from         logical names of earlier pieces this one is crafted from
      */
-    public record Piece(String name, String prompt, SlotKind kind, Role role, List<String> from) {}
+    public record Piece(String name, String prompt, SlotKind kind, Role role,
+                        String resourceType, boolean refine, List<String> from) {}
 
     /** An ordered mod plan: a natural-resource-first progression of pieces. */
     public record ModPlan(List<Piece> pieces) {
@@ -177,24 +180,34 @@ public final class ModPlannerAgent {
 
     private static final String SYSTEM_MOD = """
             You are the planning agent for Conjure. Design a COMPLETE, PLAYABLE Minecraft progression
-            for the mod concept — think about the gameplay loop, not just a bag of items:
-              1. NATURAL RESOURCE(S): where the mod's materials come from in the WORLD — an ore/rock
-                 block (role "resource", kind "block"), or a mob that drops them (kind "entity").
-              2. RAW MATERIALS: the items you get from a resource (role "material"), each listing its
-                 resource in "from" (a material from an ore is SMELTED from it).
-              3. PRODUCTS: the goal items/blocks the user actually wants (role "product"), each listing
-                 the materials/products it is crafted "from".
-            Order so every piece only references earlier pieces. Resources have an empty "from".
+            for the mod concept — think about the gameplay loop, and make the NATURAL RESOURCE FIT THE
+            THEME (do NOT default to ores/mining):
+              1. NATURAL RESOURCE(S) (role "resource"): where the mod's materials come from in the WORLD.
+                 Choose the "resourceType" that fits the theme:
+                   "plant" — a crop/herb/flower/bush growing on the surface   (kind "block")
+                   "tree"  — a tree you chop                                  (kind "block")
+                   "mob"   — a creature that drops the material when killed   (kind "entity")
+                   "ore"   — a mineral mined underground — ONLY for mining/metal themes (kind "block")
+                 A botany / farming / nature / cooking mod uses plant or tree resources and MUST NOT
+                 use ores or mining. Resources have an empty "from".
+              2. RAW MATERIALS (role "material"): items obtained from a resource — harvested produce,
+                 logs, mob drops. Each lists its resource in "from". Set "refine": true ONLY if it is
+                 made in a furnace (smelt/cook); false for harvested/crafted materials (default).
+              3. PRODUCTS (role "product"): the goal items/blocks the user wants, each crafted "from"
+                 earlier materials/products.
+            Order so every piece references only earlier pieces.
             Reply with ONLY a JSON object, no prose, no fences:
             {
               "pieces": [
                 { "name": "<unique_snake_id>", "prompt": "<3-8 word concrete prompt>",
                   "kind": "item|block|entity", "role": "resource|material|product",
+                  "resourceType": "plant|tree|mob|ore",   // resources only
+                  "refine": true|false,                     // materials only
                   "from": ["<earlier piece name>", ...] }
               ]
             }
-            Rules: 5-20 pieces. At least one resource. Every material and product lists a non-empty
-            "from". Names are short, unique snake_case. Never repeat a concept.
+            Rules: 5-20 pieces. At least one resource whose type fits the theme. Names are short,
+            unique snake_case. Never repeat a concept.
             """;
 
     /**
@@ -215,8 +228,12 @@ public final class ModPlannerAgent {
                     JsonObject p = el.getAsJsonObject();
                     String prompt = str(p, "prompt");
                     if (prompt.isBlank()) continue;
+                    boolean refine = p.has("refine") && !p.get("refine").isJsonNull()
+                            && p.get("refine").getAsBoolean();
                     pieces.add(new Piece(str(p, "name"), prompt, parseKind(str(p, "kind")),
-                            parseRole(str(p, "role")), parseFrom(p)));
+                            parseRole(str(p, "role")),
+                            str(p, "resourceType").toLowerCase(java.util.Locale.ROOT), refine,
+                            parseFrom(p)));
                     if (pieces.size() >= MAX_PIECES) break;
                 }
             }
@@ -225,7 +242,7 @@ public final class ModPlannerAgent {
         }
         if (pieces.isEmpty()) {
             for (String prompt : plan(description, true)) {
-                pieces.add(new Piece(null, prompt, null, Role.PRODUCT, List.of()));
+                pieces.add(new Piece(null, prompt, null, Role.PRODUCT, "", false, List.of()));
             }
         }
         return new ModPlan(pieces);

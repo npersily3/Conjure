@@ -81,6 +81,10 @@ public final class EntityPipeline implements GenerationPipeline {
         // --- Commit -----------------------------------------------------------
         PipelineSupport.commit(def);
 
+        // Report the entity id so a mod-economy "mob" resource can get spawn weights (add_spawns).
+        dev.conjure.gen.GenerationContext gc = dev.conjure.gen.GenerationContext.current();
+        if (gc != null) gc.setCreatedId("conjure:entity_slot_" + slot);
+
         feedback.accept("Conjured '" + data.displayName() + "' → entity slot #" + slot
                 + ". Try: /summon conjure:entity_slot_" + slot);
     }
