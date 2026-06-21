@@ -63,7 +63,7 @@ public class ConjureItem extends Item {
         }
     }
 
-    /** Right-click in the air: runs the behavior script with no block/entity target. */
+    /** Right-click in the air: runs the behavior script with trigger "use". */
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         SlotDefinition d = def();
@@ -73,16 +73,15 @@ public class ConjureItem extends Item {
         if (level.isClientSide || !hasScript(d)) {
             return InteractionResultHolder.pass(player.getItemInHand(hand));
         }
-        boolean ok = runBehavior(player, new ScriptContext(level, player, hand));
+        boolean ok = runBehavior(player, new ScriptContext(level, player, hand, "use"));
         ItemStack held = player.getItemInHand(hand);
         return ok ? InteractionResultHolder.sidedSuccess(held, false)
                   : InteractionResultHolder.fail(held);
     }
 
     /**
-     * Right-click on a block: runs the behavior script with the clicked block as the target, so a
-     * script can read the block (e.g. a key checking a safe's {@code keyId}), toggle its state, or
-     * transform it. Returns CONSUME so the interaction does not also fall through to {@link #use}.
+     * Right-click on a block: runs the behavior script with trigger "useOnBlock".
+     * Returns CONSUME so the interaction does not also fall through to {@link #use}.
      */
     @Override
     public InteractionResult useOn(UseOnContext context) {
@@ -95,17 +94,18 @@ public class ConjureItem extends Item {
         if (level.isClientSide) {
             return InteractionResult.SUCCESS;
         }
-        ScriptContext ctx = new ScriptContext(level, player, context.getHand(),
+        ScriptContext ctx = new ScriptContext(level, player, context.getHand(), "useOnBlock",
                 context.getClickedPos(), context.getClickedFace());
         return runBehavior(player, ctx) ? InteractionResult.CONSUME : InteractionResult.FAIL;
     }
 
-    /** Hit a mob: runs the behavior script with that mob as the target (weapon effects). */
+    /** Hit a mob: runs the behavior script with trigger "hitEntity". */
     @Override
     public boolean hurtEnemy(ItemStack stack, LivingEntity target, LivingEntity attacker) {
         SlotDefinition d = def();
         if (attacker instanceof Player player && !attacker.level().isClientSide && hasScript(d)) {
-            runBehavior(player, new ScriptContext(attacker.level(), player, InteractionHand.MAIN_HAND, target));
+            runBehavior(player, new ScriptContext(attacker.level(), player, InteractionHand.MAIN_HAND,
+                    "hitEntity", target));
         }
         return super.hurtEnemy(stack, target, attacker);
     }
@@ -114,8 +114,11 @@ public class ConjureItem extends Item {
         return d.configured && d.behaviorScriptId != null && !d.behaviorScriptId.isBlank();
     }
 
-    /** Runs the slot's behavior script with {@code ctx}; logs + surfaces any error, returns success. */
-    private boolean runBehavior(Player player, ScriptContext ctx) {
+    /**
+     * Runs the slot's behavior script with {@code ctx}; logs + surfaces any error, returns success.
+     * Public so the swing packet handler in {@code dev.conjure.network} can invoke it.
+     */
+    public boolean runBehavior(Player player, ScriptContext ctx) {
         String scriptId = def().behaviorScriptId;
         try {
             ScriptRuntime.get().run(scriptId, ctx);

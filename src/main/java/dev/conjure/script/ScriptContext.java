@@ -9,7 +9,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.resources.ResourceLocation;
@@ -20,8 +19,6 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -38,18 +35,22 @@ import javax.annotation.Nullable;
 /**
  * The whitelisted host object injected into every Conjure behavior script as {@code ctx}.
  *
- * <p>This class is intentionally narrow — it exposes only safe, gameplay-level operations
- * to the AI-authored script. No reflection, no IO, no class-loading. The Rhino ClassShutter
- * in {@link ScriptRuntime} additionally prevents scripts from reaching any Java class at all,
- * so only what is explicitly passed as a script binding is reachable.
+ * <p>This class exposes a curated API of gameplay-level operations plus raw MC object
+ * accessors so scripts can call any Minecraft API directly on the returned objects.
+ * The Rhino ClassShutter in {@link ScriptRuntime} allows {@code net.minecraft.*} classes
+ * so that objects returned by the raw accessors are fully usable from script.
  *
  * <p>All methods are server-side only; callers must guard with {@code !level.isClientSide}
  * before constructing one of these.
  *
- * <p>A context may carry an optional <b>target block</b> (the block a {@code useOn} script
- * clicked, or the block running its own script) and an optional <b>target entity</b> (the mob
- * a weapon hit). Verbs that need one no-op when it is absent, so a script written for one hook
- * is harmless if reused in another.
+ * <h2>Trigger values</h2>
+ * {@link #trigger()} returns one of:
+ * <ul>
+ *   <li>{@code "use"}        — right-click in the air</li>
+ *   <li>{@code "useOnBlock"} — right-click on a block</li>
+ *   <li>{@code "hitEntity"}  — weapon hit a living entity</li>
+ *   <li>{@code "swing"}      — left-click swing (empty air, fired via network)</li>
+ * </ul>
  */
 public final class ScriptContext {
 
@@ -58,40 +59,132 @@ public final class ScriptContext {
     private final Level level;
     private final Player player;
     private final InteractionHand hand;
+    private final String trigger;
 
     /** Block this script acts on: the clicked block (useOn) or the block's own position. */
     @Nullable private final BlockPos targetPos;
     /** Face of {@link #targetPos} that was clicked, for placing against (useOn only). */
     @Nullable private final Direction targetFace;
-    /** Mob a weapon script hit (hurtEnemy hook). */
+    /** Mob a weapon script hit (hitEntity hook). */
     @Nullable private final LivingEntity targetEntity;
 
-    /** Right-click-air item script (no block/entity target). */
+    // -------------------------------------------------------------------------
+    // Constructors — existing signatures kept for block-shell callers
+    // -------------------------------------------------------------------------
+
+    /** Right-click-air item script (no block/entity target). Trigger defaults to "use". */
     public ScriptContext(Level level, Player player, InteractionHand hand) {
-        this(level, player, hand, null, null, null);
+        this(level, player, hand, "use", null, null, null);
     }
 
-    /** Block script or item-used-on-block script: knows the targeted block + clicked face. */
+    /** Block script or item-used-on-block script: knows the targeted block + clicked face.
+     *  Trigger defaults to "useOnBlock" — block shells call this form. */
     public ScriptContext(Level level, Player player, InteractionHand hand,
                          @Nullable BlockPos targetPos, @Nullable Direction targetFace) {
-        this(level, player, hand, targetPos, targetFace, null);
+        this(level, player, hand, "useOnBlock", targetPos, targetFace, null);
     }
 
-    /** Weapon script: knows the mob it hit. */
+    /** Weapon script: knows the mob it hit. Trigger defaults to "hitEntity". */
     public ScriptContext(Level level, Player player, InteractionHand hand,
                          @Nullable LivingEntity targetEntity) {
-        this(level, player, hand, null, null, targetEntity);
+        this(level, player, hand, "hitEntity", null, null, targetEntity);
     }
 
-    private ScriptContext(Level level, Player player, InteractionHand hand,
+    /** Full constructor with explicit trigger. Use this when the caller can name the trigger. */
+    public ScriptContext(Level level, Player player, InteractionHand hand, String trigger) {
+        this(level, player, hand, trigger, null, null, null);
+    }
+
+    /** Full constructor with trigger + block target. */
+    public ScriptContext(Level level, Player player, InteractionHand hand, String trigger,
+                         @Nullable BlockPos targetPos, @Nullable Direction targetFace) {
+        this(level, player, hand, trigger, targetPos, targetFace, null);
+    }
+
+    /** Full constructor with trigger + entity target. */
+    public ScriptContext(Level level, Player player, InteractionHand hand, String trigger,
+                         @Nullable LivingEntity targetEntity) {
+        this(level, player, hand, trigger, null, null, targetEntity);
+    }
+
+    private ScriptContext(Level level, Player player, InteractionHand hand, String trigger,
                           @Nullable BlockPos targetPos, @Nullable Direction targetFace,
                           @Nullable LivingEntity targetEntity) {
         this.level = level;
         this.player = player;
         this.hand = hand;
+        this.trigger = trigger != null ? trigger : "use";
         this.targetPos = targetPos;
         this.targetFace = targetFace;
         this.targetEntity = targetEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Trigger
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the interaction trigger that created this context. One of:
+     * {@code "use"}, {@code "useOnBlock"}, {@code "hitEntity"}, {@code "swing"}.
+     */
+    public String trigger() {
+        return trigger;
+    }
+
+    // -------------------------------------------------------------------------
+    // Raw MC object accessors — scripts can call any MC API on the returned objects
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the {@link Level} this script is running in.
+     * Cast to {@code ServerLevel} for server-only operations such as spawning entities.
+     */
+    public Level getLevel() {
+        return level;
+    }
+
+    /** Returns the {@link Player} who triggered this script. */
+    public Player getPlayer() {
+        return player;
+    }
+
+    /**
+     * Returns the {@link LivingEntity} that was hit, or {@code null} if none.
+     * Non-null only when {@link #trigger()} is {@code "hitEntity"}.
+     */
+    @Nullable
+    public LivingEntity getTargetEntity() {
+        return targetEntity;
+    }
+
+    /**
+     * Returns the {@link BlockPos} of the target block, or {@code null} if none.
+     * Non-null when {@link #trigger()} is {@code "useOnBlock"} or in a block's own script.
+     */
+    @Nullable
+    public BlockPos getTargetPos() {
+        return targetPos;
+    }
+
+    /** Returns the {@link InteractionHand} that triggered this script. */
+    public InteractionHand getHand() {
+        return hand;
+    }
+
+    // -------------------------------------------------------------------------
+    // Generic velocity — replaces the removed launch / dashForward verbs
+    // -------------------------------------------------------------------------
+
+    /**
+     * Apply a velocity impulse to the player and resync the client so the movement is visible.
+     * Values are added to the player's current delta movement, not set absolutely.
+     *
+     * @param x east/west impulse
+     * @param y upward impulse (positive = up)
+     * @param z north/south impulse
+     */
+    public void applyVelocity(double x, double y, double z) {
+        addMotion(x, y, z);
     }
 
     // -------------------------------------------------------------------------
@@ -139,93 +232,9 @@ public final class ScriptContext {
         if (fx != null) player.addEffect(fx);
     }
 
-    /** Set the player on fire for {@code seconds} (clamped 0–60). */
-    public void ignite(int seconds) {
-        player.setRemainingFireTicks(Math.max(0, Math.min(seconds, 60)) * 20);
-    }
-
     /** Consume one of the held item (single-use). Creative players are unaffected. */
     public void consumeHeld() {
         if (!player.getAbilities().instabuild) player.getItemInHand(hand).shrink(1);
-    }
-
-    // -------------------------------------------------------------------------
-    // Movement (player) — velocity is resynced to the client so it actually moves
-    // -------------------------------------------------------------------------
-
-    /** Launch the player straight up. {@code power} clamped 0–4 (≈ jump-boost to firework). */
-    public void launch(double power) {
-        addMotion(0, Math.max(0, Math.min(power, 4)), 0);
-    }
-
-    /** Dash the player in their look direction. {@code power} clamped 0–4, with a small lift. */
-    public void dashForward(double power) {
-        double p = Math.max(0, Math.min(power, 4));
-        Vec3 look = player.getLookAngle();
-        addMotion(look.x * p, Math.max(0.1, look.y * p * 0.5 + 0.2), look.z * p);
-    }
-
-    // -------------------------------------------------------------------------
-    // Combat — act on the mob a weapon hit (no-op if there is none)
-    // -------------------------------------------------------------------------
-
-    /** Deal extra {@code amount} damage to the hit mob (2 = 1 heart). */
-    public void damageTarget(double amount) {
-        if (targetEntity != null && amount > 0) {
-            targetEntity.hurt(player.damageSources().playerAttack(player), (float) amount);
-        }
-    }
-
-    /** Set the hit mob on fire for {@code seconds} (clamped 0–60). */
-    public void igniteTarget(int seconds) {
-        if (targetEntity != null) {
-            targetEntity.setRemainingFireTicks(Math.max(0, Math.min(seconds, 60)) * 20);
-        }
-    }
-
-    /** Knock the hit mob away from the player. {@code power} clamped 0–4. */
-    public void knockbackTarget(double power) {
-        if (targetEntity != null) {
-            double p = Math.max(0, Math.min(power, 4));
-            targetEntity.knockback(p, player.getX() - targetEntity.getX(),
-                    player.getZ() - targetEntity.getZ());
-        }
-    }
-
-    /** Apply a potion effect to the hit mob. {@code amp} 0 = level I; clamped 0–4, 1–600 s. */
-    public void effectTarget(String effectId, int seconds, int amplifier) {
-        MobEffectInstance fx = effect(effectId, seconds, amplifier);
-        if (targetEntity != null && fx != null) targetEntity.addEffect(fx);
-    }
-
-    // -------------------------------------------------------------------------
-    // World effects
-    // -------------------------------------------------------------------------
-
-    /** Spawn a lightning bolt at the player (visual + fire/damage as vanilla). */
-    public void lightning() {
-        if (level instanceof ServerLevel sl) {
-            LightningBolt bolt = EntityType.LIGHTNING_BOLT.create(sl);
-            if (bolt != null) {
-                bolt.moveTo(player.getX(), player.getY(), player.getZ());
-                sl.addFreshEntity(bolt);
-            }
-        }
-    }
-
-    /** Explosion at the player that damages entities but never breaks blocks. {@code power} 0–8. */
-    public void explode(double power) {
-        float r = (float) Math.max(0, Math.min(power, 8));
-        level.explode(player, player.getX(), player.getY(), player.getZ(), r,
-                Level.ExplosionInteraction.NONE);
-    }
-
-    /** Burst of HEART particles above the player. */
-    public void spawnParticleHere() {
-        if (level instanceof ServerLevel sl) {
-            sl.sendParticles(ParticleTypes.HEART, player.getX(), player.getY() + 1.5, player.getZ(),
-                    8, 0.3, 0.3, 0.3, 0.0);
-        }
     }
 
     /** Play a sound at the player. Unknown ids are ignored. */
@@ -238,18 +247,21 @@ public final class ScriptContext {
     }
 
     // -------------------------------------------------------------------------
-    // Target block — the clicked block (useOn) or the block running this script.
-    // The on/off state only exists on ACTIVATABLE blocks (doors, lamps, safes…).
+    // Target entity — present when trigger() == "hitEntity"
     // -------------------------------------------------------------------------
-
-    /** True when this script was invoked against a block (a useOn item or a block's own script). */
-    public boolean hasTargetBlock() {
-        return targetPos != null;
-    }
 
     /** True when this script was invoked by a weapon hitting a mob. */
     public boolean hasTargetEntity() {
         return targetEntity != null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Target block — the clicked block (useOnBlock) or the block running this script.
+    // -------------------------------------------------------------------------
+
+    /** True when this script was invoked against a block (a useOnBlock item or a block's own script). */
+    public boolean hasTargetBlock() {
+        return targetPos != null;
     }
 
     /** True if the target block is an ACTIVATABLE block currently switched on (open/lit/unlocked). */
@@ -321,6 +333,27 @@ public final class ScriptContext {
     public double targetBlockNum(String key) {
         SlotDefinition d = targetBlockDef();
         return d == null ? 0 : d.num(key, 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // Reusable named effects
+    // -------------------------------------------------------------------------
+
+    /**
+     * Load and execute a named reusable effect script against this context.
+     * Effect scripts live at {@code <gamedir>/conjure/generated/effects/<name>.js}.
+     * <p>
+     * // ponytail: the nested run opens a fresh Rhino Context so the budget resets
+     * // per effect — fine for one nesting level; deeply chained effects would multiply.
+     *
+     * @param name effect name (no extension)
+     */
+    public void applyEffect(String name) {
+        try {
+            ScriptRuntime.get().runEffect(name, this);
+        } catch (ScriptException e) {
+            LOGGER.warn("[Conjure script] applyEffect('{}') failed: {}", name, e.getMessage());
+        }
     }
 
     // -------------------------------------------------------------------------
